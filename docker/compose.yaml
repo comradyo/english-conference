@@ -1,0 +1,35 @@
+services:
+  api:
+    image: ${COMPOSE_PROJECT_NAME}-api:${API_IMAGE_TAG:-latest}
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    restart: unless-stopped
+    environment:
+      MONGO_URI: ${MONGO_URI:-mongodb://mongo:27017}
+      MONGO_DB: ${MONGO_DB:-tilda}
+      MONGO_COLLECTION: ${MONGO_COLLECTION:-submissions}
+
+      TILDA_API_KEY_NAME: ${TILDA_API_KEY_NAME:-Authorization}
+      TILDA_API_KEY_VALUE: ${TILDA_API_KEY_VALUE:-}
+    ports:
+      - "8000:8000"
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+  mongo:
+    image: mongo:8
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    #    ports:
+    #      - "27017:27017"
+    healthcheck:
+      test: [ "CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  mongo-data:
