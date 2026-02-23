@@ -27,7 +27,7 @@ class Settings:
             api_key_value=os.getenv("TILDA_API_KEY_VALUE", ""),
 
             mongo_uri=os.getenv("MONGO_URI", "mongodb://localhost:27017"),
-            mongo_db=os.getenv("MONGO_DB", "tilda"),
+            mongo_db=os.getenv("MONGO_DB", "eng_conference"),
             mongo_collection=os.getenv("MONGO_COLLECTION", "submissions"),
 
             download_dir=Path(os.getenv("DOWNLOAD_DIR", "./data/downloads")),

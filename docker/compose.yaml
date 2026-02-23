@@ -3,17 +3,45 @@ services:
     image: ${COMPOSE_PROJECT_NAME}-api:${API_IMAGE_TAG:-latest}
     build:
       context: ..
-      dockerfile: docker/Dockerfile
+      dockerfile: docker/api.Dockerfile
     restart: unless-stopped
     environment:
       MONGO_URI: ${MONGO_URI:-mongodb://mongo:27017}
-      MONGO_DB: ${MONGO_DB:-tilda}
+      MONGO_DB: ${MONGO_DB:-eng_conference}
       MONGO_COLLECTION: ${MONGO_COLLECTION:-submissions}
 
       TILDA_API_KEY_NAME: ${TILDA_API_KEY_NAME:-Authorization}
       TILDA_API_KEY_VALUE: ${TILDA_API_KEY_VALUE:-}
     ports:
       - "8000:8000"
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+  worker:
+    image: ${COMPOSE_PROJECT_NAME}-worker:${API_IMAGE_TAG:-latest}
+    build:
+      context: ..
+      dockerfile: docker/worker.Dockerfile
+    restart: unless-stopped
+    environment:
+      MONGO_URI: ${MONGO_URI:-mongodb://mongo:27017}
+      MONGO_DB: ${MONGO_DB:-eng_conference}
+      MONGO_COLLECTION: ${MONGO_COLLECTION:-submissions}
+
+      POLL_INTERVAL_SEC: ${POLL_INTERVAL_SEC:-2}
+      LOCK_TIMEOUT_SEC: ${LOCK_TIMEOUT_SEC:-300}
+      MAX_ATTEMPTS: ${MAX_ATTEMPTS:-5}
+
+      DOWNLOAD_DIR: ${DOWNLOAD_DIR:-/data/downloads}
+      WORKER_ID: ${WORKER_ID:-downloader-1}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+
+      YANDEX_API_URL: ${YANDEX_API_URL:-https://cloud-api.yandex.net/v1/disk/resources/download/}
+      YANDEX_API_TOKEN: ${YANDEX_API_TOKEN:-}
+      YANDEX_DISK_PATH: ${YANDEX_DISK_PATH:-Приложения/Tilda Publishing and Disk/English_test/}
+    volumes:
+      - downloads:/data/downloads
     depends_on:
       mongo:
         condition: service_healthy
@@ -27,9 +55,10 @@ services:
     #      - "27017:27017"
     healthcheck:
       test: [ "CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok" ]
-      interval: 10s
+      interval: 5s
       timeout: 5s
       retries: 10
 
 volumes:
   mongo-data:
+  downloads:

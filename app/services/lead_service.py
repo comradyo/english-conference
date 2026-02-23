@@ -2,8 +2,13 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from fastapi import FastAPI
+from pydantic import HttpUrl
 
 from schemas.tilda import TildaSubmission
+
+
+def _extract_file_name_from_tilda_url(url: HttpUrl) -> str:
+    return str(url).rsplit("/", 1)[-1]
 
 
 async def process_lead(payload: Dict[str, Any], referer: Optional[str], app: FastAPI) -> str:
@@ -16,6 +21,7 @@ async def process_lead(payload: Dict[str, Any], referer: Optional[str], app: Fas
         "raw_payload": payload,
         "created_at": datetime.now(timezone.utc),
         "referer": referer,
+        "publication_file_name": _extract_file_name_from_tilda_url(submission.publication_file_url),
         "result": None,
         "locked_at": None
     })
