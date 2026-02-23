@@ -10,6 +10,6 @@ async def process_file(file_path: Path, doc: Dict[str, Any]) -> Dict[str, Any]:
         "status": "ok",
         "file_name": file_path.name,
         "file_size": st.st_size,
-        "processed_at": datetime.now(timezone.utc).isoformat(),
+        "processed_at": datetime.now(timezone.utc),
         "doc_id": str(doc["_id"]),
     }

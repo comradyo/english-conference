@@ -12,6 +12,8 @@ services:
 
       TILDA_API_KEY_NAME: ${TILDA_API_KEY_NAME:-Authorization}
       TILDA_API_KEY_VALUE: ${TILDA_API_KEY_VALUE:-}
+
+      LOG_LEVEL: ${LOG_LEVEL:-info}
     ports:
       - "8000:8000"
     depends_on:

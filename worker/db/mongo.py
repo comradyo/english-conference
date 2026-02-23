@@ -48,7 +48,7 @@ class MongoRepo:
                 "$set": {
                     "locked_at": now_dt,
                     "lock_owner": self.settings.worker_id,
-                    "updated_at": now_dt.isoformat(),
+                    "updated_at": now_dt,
                 },
                 "$inc": {"attempts": 1},
             },
@@ -62,12 +62,12 @@ class MongoRepo:
             result_value: Any,
             file_local_path: Optional[str] = None,
     ) -> None:
-        now_str = datetime.now(timezone.utc).isoformat()
+        now_dt = datetime.now(timezone.utc)
         update: Dict[str, Any] = {
             "$set": {
                 "result": bson_safe(result_value),
-                "processed_at": now_str,
-                "updated_at": now_str,
+                "processed_at": now_dt,
+                "updated_at": now_dt,
             },
             "$unset": {
                 "locked_at": "",
@@ -91,7 +91,6 @@ class MongoRepo:
           оставляем locked_at=datetime.now() и снимаем lock_owner
         """
         now_dt = datetime.now(timezone.utc)
-        now_str = now_dt.isoformat()
         attempts = int(doc.get("attempts") or 0)
 
         if attempts >= self.settings.max_attempts:
@@ -100,9 +99,9 @@ class MongoRepo:
                 {"_id": doc["_id"], "lock_owner": self.settings.worker_id},
                 {
                     "$set": {
-                        "result": {"status": "failed", "error": error_text, "attempts": attempts, "at": now_str},
-                        "failed_at": now_str,
-                        "updated_at": now_str,
+                        "result": {"status": "failed", "error": error_text, "attempts": attempts, "at": now_dt},
+                        "failed_at": now_dt,
+                        "updated_at": now_dt,
                         "last_error": error_text,
                     },
                     "$unset": {"locked_at": "", "lock_owner": ""},
@@ -114,9 +113,9 @@ class MongoRepo:
                 {"_id": doc["_id"], "lock_owner": self.settings.worker_id},
                 {
                     "$set": {
-                        "result": {"status": "error", "error": error_text, "attempts": attempts, "at": now_str},
+                        "result": {"status": "error", "error": error_text, "attempts": attempts, "at": now_dt},
                         "last_error": error_text,
-                        "updated_at": now_str,
+                        "updated_at": now_dt,
                         "locked_at": now_dt,  # <-- ключевой момент: удерживаем lock для cooldown
                     },
                     "$unset": {"lock_owner": ""},  # <-- освобождаем "владение", но lock по времени остаётся
