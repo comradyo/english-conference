@@ -20,7 +20,6 @@ async def run_worker(stop: asyncio.Event, settings: Settings) -> None:
         "Accept": "application/json",
         "Authorization": f"OAuth {settings.yandex_api_token}",
     }
-    print('1')
 
     async with aiohttp.ClientSession(headers=headers, timeout=timeout, raise_for_status=True) as session:
         settings.download_dir.mkdir(parents=True, exist_ok=True)

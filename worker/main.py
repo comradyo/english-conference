@@ -25,5 +25,4 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    print('0')
     asyncio.run(main())
