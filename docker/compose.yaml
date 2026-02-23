@@ -14,6 +14,12 @@ services:
       TILDA_API_KEY_VALUE: ${TILDA_API_KEY_VALUE:-}
 
       LOG_LEVEL: ${LOG_LEVEL:-info}
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -fsS http://localhost:8000/health || exit 1" ]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
     ports:
       - "8000:8000"
     depends_on:
