@@ -15,9 +15,24 @@ async def lifespan(app: FastAPI):
     app.state.mongo_db = app.state.mongo_client[settings.mongo_db]
     app.state.mongo_collection = app.state.mongo_db[settings.mongo_collection]
 
-    # (опционально) индекс, чтобы выборка "pending" была быстрой
-    # await app.state.mongo_collection.create_index([("file.status", 1), ("created_at", 1)])
-    # await app.state.mongo_collection.create_index([("file.local_path", 1)])
+    # Индексы под воркер: быстрый поиск задач (pending/error) + сортировка по created_at
+    await app.state.mongo_collection.create_index(
+        [("locked_at", 1), ("created_at", 1)],
+        name="idx_pending_by_lock_created",
+        partialFilterExpression={"result": None},
+    )
+
+    await app.state.mongo_collection.create_index(
+        [("locked_at", 1), ("created_at", 1)],
+        name="idx_error_by_lock_created",
+        partialFilterExpression={"result.status": "error"},
+    )
+
+    # Быстро находить запись по URL файла (иногда полезно для дебага/отчётов)
+    await app.state.mongo_collection.create_index(
+        [("publication_file_url", 1)],
+        name="idx_publication_file_url",
+    )
 
     yield
 

@@ -15,9 +15,22 @@ class MongoRepo:
         self.col = self.client[settings.mongo_db][settings.mongo_collection]
 
     async def ensure_indexes(self) -> None:
-        await self.col.create_index([("result", 1), ("locked_at", 1), ("created_at", 1)])
-        await self.col.create_index([("result.status", 1), ("locked_at", 1), ("created_at", 1)])
-        await self.col.create_index([("publication_file_url", 1)])
+        await self.col.create_index(
+            [("locked_at", 1), ("created_at", 1)],
+            name="idx_pending_by_lock_created",
+            partialFilterExpression={"result": None},
+        )
+
+        await self.col.create_index(
+            [("locked_at", 1), ("created_at", 1)],
+            name="idx_error_by_lock_created",
+            partialFilterExpression={"result.status": "error"},
+        )
+
+        await self.col.create_index(
+            [("publication_file_url", 1)],
+            name="idx_publication_file_url",
+        )
 
     async def close(self) -> None:
         self.client.close()
