@@ -2,11 +2,13 @@ from fastapi import FastAPI, HTTPException
 
 from api.v1.routes.tilda_webhook import router as tilda_router
 from core.lifespan import lifespan
-from core.logging import setup_logging
+from core.logging import register_log_filter, setup_logging
 
 setup_logging()
 
 app = FastAPI(lifespan=lifespan)
+
+register_log_filter()
 app.include_router(tilda_router)
 
 
