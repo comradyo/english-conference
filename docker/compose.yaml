@@ -57,6 +57,7 @@ services:
   mongo:
     image: mongo:8
     restart: unless-stopped
+    command: [ "mongod", "--logpath", "/proc/1/fd/1", "--logappend", "--quiet", "--setParameter", "logComponentVerbosity={verbosity:0}" ]
     volumes:
       - mongo-data:/data/db
     #    ports:
