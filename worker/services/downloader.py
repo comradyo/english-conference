@@ -1,5 +1,8 @@
 from pathlib import Path
 from typing import Any
+import os
+import uuid
+from contextlib import suppress
 
 import aiohttp
 from aiohttp import ClientSession
@@ -22,8 +25,24 @@ async def _get_download_url(settings: Settings, session: ClientSession, file_nam
     return href
 
 
-async def _download(session: ClientSession, href, out_path: Path):
-    async with session.get(href) as resp:
-        with open(out_path, "wb") as f:
-            async for chunk in resp.content.iter_chunked(1024 * 1024):
-                f.write(chunk)
+async def _download(session: ClientSession, href: str, out_path: Path) -> None:
+    # temp-файл в той же директории, чтобы rename был атомарным
+    tmp_path = out_path.with_name(out_path.name + f".part-{uuid.uuid4().hex}")
+
+    try:
+        async with session.get(href) as resp:
+            with open(tmp_path, "wb") as f:
+                async for chunk in resp.content.iter_chunked(1024 * 1024):
+                    if chunk:
+                        f.write(chunk)
+                f.flush()
+                os.fsync(f.fileno())  # гарантируем запись на диск
+
+        # атомарно заменяем/создаём конечный файл
+        tmp_path.replace(out_path)
+
+    except Exception:
+        # если что-то пошло не так — удаляем temp
+        with suppress(FileNotFoundError):
+            tmp_path.unlink()
+        raise
