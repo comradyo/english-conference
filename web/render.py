@@ -44,7 +44,7 @@ form, .cards, .meta, label, .meta-row {{ display:grid; gap:14px; }} .cards {{ ga
 input, select, textarea, button {{ width:100%; font:inherit; color:inherit; border-radius:14px; border:1px solid var(--line); background:#fff; padding:12px 14px; }}
 textarea {{ min-height:110px; resize:vertical; }} button {{ border:none; cursor:pointer; background:linear-gradient(135deg, #0f5959, #207070); color:#fff; font-weight:700; min-height:46px; }} .action-link {{ display:inline-flex; align-items:center; justify-content:center; width:100%; min-height:46px; padding:12px 14px; border-radius:14px; background:var(--soft); color:var(--accent); font-weight:700; text-decoration:none; }}
 @media (max-width:820px) {{ .split, .grid {{ grid-template-columns:1fr; }} .shell {{ padding:18px; border-radius:18px; }} }}
-</style></head><body><main class="page"><section class="shell"><div class="topbar"><div><h1>{escape(title)}</h1><p class="subtitle">Отдельный микросервис для личного кабинета участников конференции, регистрации заявок и административного просмотра.</p></div>{user_badge(current_user)}</div><nav>{nav_html(current_user)}</nav>{banner(success, 'success')}{banner(error, 'error')}{body}</section></main></body></html>"""
+</style></head><body><main class="page"><section class="shell"><div class="topbar"><div><h1>{escape(title)}</h1></div>{user_badge(current_user)}</div><nav>{nav_html(current_user)}</nav>{banner(success, 'success')}{banner(error, 'error')}{body}</section></main></body></html>"""
     )
 
 
@@ -120,6 +120,7 @@ def render_auth_page(*, error: str | None = None, success: str | None = None, re
           <label>Повторите пароль<input type="password" name="password_repeat" required minlength="8"></label>
           <button type="submit">Зарегистрироваться</button>
         </form>
+        <br>
         <button type="button" id="show-login-button">Назад ко входу</button>
       </section>
     </section>
@@ -182,7 +183,7 @@ def render_conference_form(current_user: dict[str, Any], *, error: str | None = 
     values.setdefault("participation", PARTICIPATION_OPTIONS[0])
     values.setdefault("section", SECTION_OPTIONS[0])
     body = f"""
-    <section class="panel"><h2>Регистрация на конференцию</h2><p>Эта форма доступна только авторизованному пользователю. После сохранения заявка появится в разделе "Мои заявки".</p>
+    <section class="panel"><h2>Регистрация на конференцию</h2><p>После сохранения заявка появится в разделе "Мои заявки".</p>
       <form method="post" action="/conference/register" enctype="multipart/form-data">
         <div class="grid">
           <label>Фамилия<input type="text" name="last_name" required value="{field_value(values, 'last_name')}"></label>
@@ -244,11 +245,20 @@ def render_record_card(record: dict[str, Any], *, admin_mode: bool) -> str:
     return f'<article class="card"><div class="card-title"><strong>{escape(str(record.get("last_name", "")))} {escape(str(record.get("first_name", "")))}</strong><span>{escape(str(record.get("_id", "")))}</span></div><div class="meta">{"".join(rows)}{comment_block}</div></article>'
 
 
-def render_records_page(title: str, current_user: dict[str, Any], records: list[dict[str, Any]], *, admin_mode: bool, success: str | None = None, empty_text: str) -> HTMLResponse:
+def render_records_page(
+    title: str,
+    current_user: dict[str, Any],
+    records: list[dict[str, Any]],
+    *,
+    admin_mode: bool,
+    success: str | None = None,
+    empty_text: str,
+    empty_action_html: str = "",
+) -> HTMLResponse:
     if records:
         body = f'<section class="cards">{"".join(render_record_card(record, admin_mode=admin_mode) for record in records)}</section>'
     else:
-        body = f'<div class="empty">{escape(empty_text)}</div>'
+        body = f'<div class="empty">{escape(empty_text)}{empty_action_html}</div>'
     return layout(title, body, current_user=current_user, success=success)
 
 

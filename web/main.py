@@ -42,7 +42,7 @@ app = FastAPI(title="Conference Personal Cabinet", lifespan=lifespan)
 async def auth_page(request: Request):
     current_user = await load_current_user(request)
     if current_user is not None:
-        return RedirectResponse(url="/conference/register", status_code=303)
+        return RedirectResponse(url="/my-registrations", status_code=303)
     return render_auth_page(success=notice_message(request.query_params.get("notice")))
 
 
@@ -96,7 +96,7 @@ async def register_account(
         raise HTTPException(status_code=500, detail="Не удалось создать пользователя.")
 
     token = await create_session(request, user)
-    response = RedirectResponse(url="/conference/register", status_code=303)
+    response = RedirectResponse(url="/my-registrations", status_code=303)
     set_session_cookie(response, request, token)
     return response
 
@@ -131,7 +131,7 @@ async def login(
         user["is_admin"] = desired_admin
 
     token = await create_session(request, user)
-    response = RedirectResponse(url="/conference/register", status_code=303)
+    response = RedirectResponse(url="/my-registrations", status_code=303)
     set_session_cookie(response, request, token)
     return response
 
@@ -262,6 +262,7 @@ async def my_registrations(request: Request):
         records,
         admin_mode=False,
         success=notice_message(request.query_params.get("notice")),
+        empty_action_html=' <a href="/conference/register">Перейти к форме регистрации</a>',
         empty_text="Вы ещё не оставляли заявок на конференцию.",
     )
 
