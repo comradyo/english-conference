@@ -1,58 +1,85 @@
 services:
-  api:
-    image: ${COMPOSE_PROJECT_NAME}-api:${API_IMAGE_TAG:-latest}
+#  api:
+#    image: ${COMPOSE_PROJECT_NAME}-api:${API_IMAGE_TAG:-latest}
+#    build:
+#      context: ..
+#      dockerfile: docker/api.Dockerfile
+#    restart: unless-stopped
+#    environment:
+#      MONGO_URI: ${MONGO_URI:-mongodb://mongo:27017}
+#      MONGO_DB: ${MONGO_DB:-eng_conference}
+#      MONGO_COLLECTION: ${MONGO_COLLECTION:-submissions}
+#
+#      TILDA_API_KEY_NAME: ${TILDA_API_KEY_NAME:-Authorization}
+#      TILDA_API_KEY_VALUE: ${TILDA_API_KEY_VALUE:-}
+#
+#      LOG_LEVEL: ${LOG_LEVEL:-info}
+#    healthcheck:
+#      test: [ "CMD-SHELL", "curl -fsS http://localhost:8000/health || exit 1" ]
+#      interval: 10s
+#      timeout: 3s
+#      retries: 10
+#      start_period: 10s
+#    ports:
+#      - "8000:8000"
+#    depends_on:
+#      mongo:
+#        condition: service_healthy
+
+  web:
+    image: ${COMPOSE_PROJECT_NAME}-web:${API_IMAGE_TAG:-latest}
     build:
       context: ..
-      dockerfile: docker/api.Dockerfile
+      dockerfile: docker/web.Dockerfile
     restart: unless-stopped
     environment:
       MONGO_URI: ${MONGO_URI:-mongodb://mongo:27017}
       MONGO_DB: ${MONGO_DB:-eng_conference}
-      MONGO_COLLECTION: ${MONGO_COLLECTION:-submissions}
-
-      TILDA_API_KEY_NAME: ${TILDA_API_KEY_NAME:-Authorization}
-      TILDA_API_KEY_VALUE: ${TILDA_API_KEY_VALUE:-}
-
-      LOG_LEVEL: ${LOG_LEVEL:-info}
+      WEB_USERS_COLLECTION: ${WEB_USERS_COLLECTION:-web_users}
+      WEB_REGISTRATIONS_COLLECTION: ${WEB_REGISTRATIONS_COLLECTION:-conference_registrations}
+      WEB_SESSIONS_COLLECTION: ${WEB_SESSIONS_COLLECTION:-web_sessions}
+      WEB_SESSION_COOKIE_NAME: ${WEB_SESSION_COOKIE_NAME:-conference_session}
+      WEB_SESSION_TTL_HOURS: ${WEB_SESSION_TTL_HOURS:-168}
+      WEB_ADMIN_EMAILS: ${WEB_ADMIN_EMAILS:-}
     healthcheck:
-      test: [ "CMD-SHELL", "curl -fsS http://localhost:8000/health || exit 1" ]
+      test: [ "CMD-SHELL", "curl -fsS http://localhost:8000/ready || exit 1" ]
       interval: 10s
       timeout: 3s
       retries: 10
       start_period: 10s
     ports:
-      - "8000:8000"
+      - "${WEB_PORT:-8001}:8000"
     depends_on:
       mongo:
         condition: service_healthy
 
-  worker:
-    image: ${COMPOSE_PROJECT_NAME}-worker:${API_IMAGE_TAG:-latest}
-    build:
-      context: ..
-      dockerfile: docker/worker.Dockerfile
-    restart: unless-stopped
-    environment:
-      MONGO_URI: ${MONGO_URI:-mongodb://mongo:27017}
-      MONGO_DB: ${MONGO_DB:-eng_conference}
-      MONGO_COLLECTION: ${MONGO_COLLECTION:-submissions}
-
-      POLL_INTERVAL_SEC: ${POLL_INTERVAL_SEC:-2}
-      LOCK_TIMEOUT_SEC: ${LOCK_TIMEOUT_SEC:-300}
-      MAX_ATTEMPTS: ${MAX_ATTEMPTS:-5}
-
-      DOWNLOAD_DIR: ${DOWNLOAD_DIR:-/data/downloads}
-      WORKER_ID: ${WORKER_ID:-downloader-1}
-      LOG_LEVEL: ${LOG_LEVEL:-info}
-
-      YANDEX_API_URL: ${YANDEX_API_URL:-https://cloud-api.yandex.net/v1/disk/resources/download/}
-      YANDEX_API_TOKEN: ${YANDEX_API_TOKEN:-}
-      YANDEX_DISK_PATH: ${YANDEX_DISK_PATH:-Приложения/Tilda Publishing and Disk/English_test/}
-    volumes:
-      - downloads:/data/downloads
-    depends_on:
-      mongo:
-        condition: service_healthy
+#  worker:
+#    image: ${COMPOSE_PROJECT_NAME}-worker:${API_IMAGE_TAG:-latest}
+#    build:
+#      context: ..
+#      dockerfile: docker/worker.Dockerfile
+#    restart: unless-stopped
+#    environment:
+#      MONGO_URI: ${MONGO_URI:-mongodb://mongo:27017}
+#      MONGO_DB: ${MONGO_DB:-eng_conference}
+#      MONGO_COLLECTION: ${MONGO_COLLECTION:-submissions}
+#
+#      POLL_INTERVAL_SEC: ${POLL_INTERVAL_SEC:-2}
+#      LOCK_TIMEOUT_SEC: ${LOCK_TIMEOUT_SEC:-300}
+#      MAX_ATTEMPTS: ${MAX_ATTEMPTS:-5}
+#
+#      DOWNLOAD_DIR: ${DOWNLOAD_DIR:-/data/downloads}
+#      WORKER_ID: ${WORKER_ID:-downloader-1}
+#      LOG_LEVEL: ${LOG_LEVEL:-info}
+#
+#      YANDEX_API_URL: ${YANDEX_API_URL:-https://cloud-api.yandex.net/v1/disk/resources/download/}
+#      YANDEX_API_TOKEN: ${YANDEX_API_TOKEN:-}
+#      YANDEX_DISK_PATH: ${YANDEX_DISK_PATH:-Приложения/Tilda Publishing and Disk/English_test/}
+#    volumes:
+#      - downloads:/data/downloads
+#    depends_on:
+#      mongo:
+#        condition: service_healthy
 
   mongo:
     image: mongo:8
