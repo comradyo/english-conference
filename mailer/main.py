@@ -80,7 +80,7 @@ def notification_email_configured(settings: Settings) -> bool:
     )
 
 
-def build_message(settings: Settings, payload: dict[str, Any]) -> EmailMessage:
+def build_registration_update_message(settings: Settings, payload: dict[str, Any]) -> EmailMessage:
     recipient = normalize_email(str(payload.get("recipient_email") or ""))
     if "@" not in recipient:
         raise RuntimeError("В задаче не указан корректный email получателя.")
@@ -116,6 +116,55 @@ def build_message(settings: Settings, payload: dict[str, Any]) -> EmailMessage:
     return message
 
 
+def build_password_reset_message(settings: Settings, payload: dict[str, Any]) -> EmailMessage:
+    recipient = normalize_email(str(payload.get("recipient_email") or ""))
+    if "@" not in recipient:
+        raise RuntimeError("В задаче не указан корректный email получателя.")
+
+    reset_url = str(payload.get("reset_url") or "").strip()
+    if not reset_url:
+        raise RuntimeError("В задаче не указана ссылка для смены пароля.")
+
+    expires_at = payload.get("expires_at")
+    if isinstance(expires_at, datetime):
+        expires_text = expires_at.astimezone(MOSCOW_TZ).strftime("%d.%m.%Y %H:%M (МСК)")
+    else:
+        expires_text = "ограниченное время"
+
+    message = EmailMessage()
+    message["Subject"] = "Смена пароля"
+    message["From"] = settings.notification_email_sender
+    message["To"] = recipient
+    message.set_content(
+        "\n".join(
+            [
+                "Здравствуйте!",
+                "",
+                "Для вашего аккаунта был запрошен сброс пароля.",
+                "Чтобы установить новый пароль, перейдите по ссылке:",
+                reset_url,
+                "",
+                f"Ссылка действительна до: {expires_text}",
+                "Если вы не запрашивали смену пароля, просто проигнорируйте это письмо.",
+            ]
+        )
+    )
+    return message
+
+
+def build_message(settings: Settings, task: dict[str, Any]) -> EmailMessage:
+    payload = task.get("payload")
+    if not isinstance(payload, dict):
+        raise RuntimeError("У задачи отсутствует корректный payload.")
+
+    kind = str(task.get("kind") or "")
+    if kind == "registration_update_email":
+        return build_registration_update_message(settings, payload)
+    if kind == "password_reset_email":
+        return build_password_reset_message(settings, payload)
+    raise RuntimeError(f"Неподдерживаемый тип задачи: {kind}")
+
+
 def send_message_via_smtp(settings: Settings, message: EmailMessage) -> None:
     context = ssl.create_default_context()
     if settings.notification_email_use_ssl:
@@ -144,12 +193,7 @@ def send_message_via_smtp(settings: Settings, message: EmailMessage) -> None:
 async def send_task_email(settings: Settings, task: dict[str, Any]) -> None:
     if not notification_email_configured(settings):
         raise RuntimeError("SMTP не настроен: заполните WEB_NOTIFICATION_EMAIL_* переменные среды.")
-
-    payload = task.get("payload")
-    if not isinstance(payload, dict):
-        raise RuntimeError("У задачи отсутствует корректный payload.")
-
-    message = build_message(settings, payload)
+    message = build_message(settings, task)
     await asyncio.to_thread(send_message_via_smtp, settings, message)
 
 
@@ -164,7 +208,6 @@ async def claim_task(collection: AsyncIOMotorCollection) -> dict[str, Any] | Non
     claimed_at = now_utc()
     return await collection.find_one_and_update(
         {
-            "kind": "registration_update_email",
             "status": {"$in": ["pending", "retry"]},
             "available_at": {"$lte": claimed_at},
         },

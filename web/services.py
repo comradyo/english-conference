@@ -165,6 +165,39 @@ def parse_object_id(value: str) -> ObjectId | None:
         return None
 
 
+def create_password_reset_token() -> str:
+    return secrets.token_urlsafe(32)
+
+
+def build_password_reset_email_task(
+    *,
+    recipient_email: str,
+    reset_url: str,
+    expires_at: datetime,
+) -> dict[str, Any]:
+    normalized_email = normalize_email(recipient_email)
+    if "@" not in normalized_email:
+        raise RuntimeError("Нельзя отправить письмо: указан некорректный email для сброса пароля.")
+    if not reset_url.strip():
+        raise RuntimeError("Нельзя отправить письмо: отсутствует ссылка для сброса пароля.")
+
+    queued_at = now_utc()
+    return {
+        "kind": "password_reset_email",
+        "status": "pending",
+        "attempts": 0,
+        "last_error": "",
+        "available_at": queued_at,
+        "created_at": queued_at,
+        "updated_at": queued_at,
+        "payload": {
+            "recipient_email": normalized_email,
+            "reset_url": reset_url.strip(),
+            "expires_at": expires_at,
+        },
+    }
+
+
 def build_registration_update_email_task(record: dict[str, Any]) -> dict[str, Any]:
     recipient = normalize_email(str(record.get("email") or ""))
     if "@" not in recipient:

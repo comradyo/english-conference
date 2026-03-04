@@ -45,6 +45,8 @@ def notice_message(key: str | None) -> str | None:
         "login_required": "Сначала войдите в личный кабинет.",
         "logged_out": "Сеанс завершён.",
         "comment_saved": "Комментарий и статус заявки сохранены.",
+        "password_reset_email_queued": "Если аккаунт с таким email существует, мы отправили ссылку для смены пароля.",
+        "password_changed": "Пароль обновлён. Теперь можно войти с новым паролем.",
     }
     return mapping.get(key)
 
@@ -82,6 +84,8 @@ label, .meta-row {{ gap:6px; font-weight:600; }}
 input, select, textarea, button {{ width:100%; font:inherit; color:inherit; border-radius:14px; border:1px solid var(--line); background:#fff; padding:12px 14px; }}
 textarea {{ min-height:110px; resize:vertical; }}
 button {{ border:none; cursor:pointer; background:linear-gradient(135deg, #0f5959, #207070); color:#fff; font-weight:700; min-height:46px; }}
+.auth-actions {{ display:grid; gap:10px; justify-items:start; }}
+.text-button {{ width:auto; min-height:0; padding:0; border:none; background:none; color:var(--accent); font-weight:700; cursor:pointer; }}
 .action-link {{ display:inline-flex; align-items:center; justify-content:center; width:100%; min-height:46px; padding:12px 14px; border-radius:14px; background:var(--soft); color:var(--accent); font-weight:700; text-decoration:none; }}
 .record-highlights {{ margin-bottom:16px; }}
 .record-highlight {{ border:1px solid var(--line); border-radius:16px; padding:16px; background:#fff; }}
@@ -246,12 +250,22 @@ def render_object_fields(record: dict[str, Any]) -> str:
     return "".join(rows)
 
 
-def render_auth_page(*, error: str | None = None, success: str | None = None, register_values: dict[str, str] | None = None, login_values: dict[str, str] | None = None) -> HTMLResponse:
+def render_auth_page(
+    *,
+    error: str | None = None,
+    success: str | None = None,
+    register_values: dict[str, str] | None = None,
+    login_values: dict[str, str] | None = None,
+    forgot_values: dict[str, str] | None = None,
+) -> HTMLResponse:
     register_values = register_values or {}
     login_values = login_values or {}
-    show_register = bool(register_values) and not bool(login_values)
-    login_hidden_attr = " hidden" if show_register else ""
+    forgot_values = forgot_values or {}
+    show_register = bool(register_values) and not bool(login_values) and not bool(forgot_values)
+    show_forgot = bool(forgot_values) and not bool(login_values) and not bool(register_values)
+    login_hidden_attr = " hidden" if (show_register or show_forgot) else ""
     register_hidden_attr = "" if show_register else " hidden"
+    forgot_hidden_attr = "" if show_forgot else " hidden"
     body = f"""
     <section class="cards">
       <section class="panel" id="login-panel"{login_hidden_attr}><h2>Вход в личный кабинет</h2><p>Введите email и пароль, чтобы открыть форму регистрации на конференцию и список своих заявок.</p>
@@ -261,7 +275,10 @@ def render_auth_page(*, error: str | None = None, success: str | None = None, re
           <button type="submit">Войти</button>
         </form>
         <br>
-        <button type="button" id="show-register-button">Создать аккаунт</button>
+        <div class="auth-actions">
+          <button type="button" id="show-register-button">Создать аккаунт</button>
+          <button type="button" class="text-button" id="show-forgot-button">Забыли пароль?</button>
+        </div>
       </section>
       <section class="panel" id="register-panel"{register_hidden_attr}><h2>Регистрация</h2><p>Создайте личный кабинет. Повторно зарегистрировать тот же email нельзя.</p>
         <form method="post" action="/register-account">
@@ -271,40 +288,108 @@ def render_auth_page(*, error: str | None = None, success: str | None = None, re
           <button type="submit">Зарегистрироваться</button>
         </form>
         <br>
-        <button type="button" id="show-login-button">Назад ко входу</button>
+        <div class="auth-actions">
+          <button type="button" id="show-login-button">Назад ко входу</button>
+        </div>
+      </section>
+      <section class="panel" id="forgot-panel"{forgot_hidden_attr}><h2>Смена пароля</h2><p>Введите адрес электронной почты. Если аккаунт существует, мы отправим ссылку для установки нового пароля.</p>
+        <form method="post" action="/forgot-password">
+          <label>Адрес электронной почты<input id="forgot-email" type="email" name="email" required value="{field_value(forgot_values, 'email')}"></label>
+          <button type="submit">Отправить ссылку</button>
+        </form>
+        <br>
+        <div class="auth-actions">
+          <button type="button" id="show-login-from-forgot-button">Назад ко входу</button>
+        </div>
       </section>
     </section>
     <script>
       (function () {{
         const loginPanel = document.getElementById("login-panel");
         const registerPanel = document.getElementById("register-panel");
+        const forgotPanel = document.getElementById("forgot-panel");
         const showRegisterButton = document.getElementById("show-register-button");
         const showLoginButton = document.getElementById("show-login-button");
+        const showForgotButton = document.getElementById("show-forgot-button");
+        const showLoginFromForgotButton = document.getElementById("show-login-from-forgot-button");
         const registerEmail = document.getElementById("register-email");
+        const forgotEmail = document.getElementById("forgot-email");
 
-        if (!loginPanel || !registerPanel || !showRegisterButton || !showLoginButton) {{
+        if (!loginPanel || !registerPanel || !forgotPanel || !showRegisterButton || !showLoginButton || !showForgotButton || !showLoginFromForgotButton) {{
           return;
         }}
 
         function showRegisterPanel() {{
           loginPanel.hidden = true;
           registerPanel.hidden = false;
+          forgotPanel.hidden = true;
           if (registerEmail) {{
             registerEmail.focus();
           }}
         }}
 
+        function showForgotPanel() {{
+          loginPanel.hidden = true;
+          registerPanel.hidden = true;
+          forgotPanel.hidden = false;
+          if (forgotEmail) {{
+            forgotEmail.focus();
+          }}
+        }}
+
         function showLoginPanel() {{
           registerPanel.hidden = true;
+          forgotPanel.hidden = true;
           loginPanel.hidden = false;
         }}
 
         showRegisterButton.addEventListener("click", showRegisterPanel);
+        showForgotButton.addEventListener("click", showForgotPanel);
         showLoginButton.addEventListener("click", showLoginPanel);
+        showLoginFromForgotButton.addEventListener("click", showLoginPanel);
       }})();
     </script>
     """
     return layout("Личный кабинет конференции", body, success=success, error=error)
+
+
+def render_password_reset_page(
+    token: str,
+    *,
+    error: str | None = None,
+    success: str | None = None,
+) -> HTMLResponse:
+    body = f"""
+    <section class="panel">
+      <h2>Новый пароль</h2>
+      <p>Введите новый пароль для вашего аккаунта. Ссылка действует ограниченное время.</p>
+      <form method="post" action="/reset-password">
+        <input type="hidden" name="token" value="{escape(token, quote=True)}">
+        <label>Новый пароль<input type="password" name="password" required minlength="8"></label>
+        <label>Повторите пароль<input type="password" name="password_repeat" required minlength="8"></label>
+        <button type="submit">Сохранить новый пароль</button>
+      </form>
+      <br>
+      <div class="auth-actions">
+        <a class="action-link" href="/">Вернуться ко входу</a>
+      </div>
+    </section>
+    """
+    return layout("Смена пароля", body, success=success, error=error)
+
+
+def render_invalid_reset_token_page(error: str) -> HTMLResponse:
+    body = """
+    <section class="panel">
+      <h2>Ссылка недействительна</h2>
+      <p>Запросите новое письмо для смены пароля и используйте свежую ссылку.</p>
+      <br>
+      <div class="auth-actions">
+        <a class="action-link" href="/">Вернуться ко входу</a>
+      </div>
+    </section>
+    """
+    return layout("Смена пароля", body, error=error)
 
 
 def render_conference_form(current_user: dict[str, Any], *, error: str | None = None, success: str | None = None, values: dict[str, str] | None = None) -> HTMLResponse:

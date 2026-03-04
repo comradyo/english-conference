@@ -36,6 +36,7 @@ PhoneNumber = Annotated[
 ]
 RegistrationPassword = Annotated[str, StringConstraints(min_length=8, max_length=128)]
 LoginPassword = Annotated[str, StringConstraints(min_length=1, max_length=128)]
+ResetToken = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=256)]
 
 
 class AccountRegistrationPayload(BaseModel):
@@ -47,6 +48,16 @@ class AccountRegistrationPayload(BaseModel):
 class AccountLoginPayload(BaseModel):
     email: EmailStr
     password: LoginPassword
+
+
+class PasswordResetRequestPayload(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetConfirmPayload(BaseModel):
+    token: ResetToken
+    password: RegistrationPassword
+    password_repeat: RegistrationPassword
 
 
 class ConferenceRegistrationPayload(BaseModel):

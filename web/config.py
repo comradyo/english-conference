@@ -12,9 +12,11 @@ class Settings:
     users_collection: str
     registrations_collection: str
     email_tasks_collection: str
+    password_reset_tokens_collection: str
     sessions_collection: str
     session_cookie_name: str
     session_ttl_hours: int
+    password_reset_ttl_minutes: int
     admin_emails: frozenset[str]
 
     @classmethod
@@ -31,8 +33,13 @@ class Settings:
             users_collection=os.getenv("WEB_USERS_COLLECTION", "web_users"),
             registrations_collection=os.getenv("WEB_REGISTRATIONS_COLLECTION", "conference_registrations"),
             email_tasks_collection=os.getenv("WEB_EMAIL_TASKS_COLLECTION", "email_tasks"),
+            password_reset_tokens_collection=os.getenv(
+                "WEB_PASSWORD_RESET_TOKENS_COLLECTION",
+                "password_reset_tokens",
+            ),
             sessions_collection=os.getenv("WEB_SESSIONS_COLLECTION", "web_sessions"),
             session_cookie_name=os.getenv("WEB_SESSION_COOKIE_NAME", "conference_session"),
             session_ttl_hours=int(os.getenv("WEB_SESSION_TTL_HOURS", str(SESSION_TTL_HOURS_DEFAULT))),
+            password_reset_ttl_minutes=max(1, int(os.getenv("WEB_PASSWORD_RESET_TTL_MINUTES", "30"))),
             admin_emails=admin_emails,
         )

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import timedelta
 from urllib.parse import quote
 
 from bson.binary import Binary
@@ -8,19 +9,30 @@ from fastapi.responses import RedirectResponse, Response
 from pydantic import ValidationError
 from pymongo.errors import DuplicateKeyError
 
-from models import AccountLoginPayload, AccountRegistrationPayload, ConferenceRegistrationPayload, REVIEW_STATUSES
+from models import (
+    AccountLoginPayload,
+    AccountRegistrationPayload,
+    ConferenceRegistrationPayload,
+    PasswordResetConfirmPayload,
+    PasswordResetRequestPayload,
+    REVIEW_STATUSES,
+)
 from render import (
     layout,
     notice_message,
     render_auth_page,
     render_conference_form,
     render_forbidden,
+    render_invalid_reset_token_page,
+    render_password_reset_page,
     render_records_page,
 )
 from security import hash_password, verify_password
 from services import (
     build_registration_update_email_task,
+    build_password_reset_email_task,
     clear_session_cookie,
+    create_password_reset_token,
     create_session,
     is_admin_email,
     load_current_user,
@@ -58,12 +70,151 @@ def file_document(upload: UploadFile | None, content: bytes | None) -> dict[str,
     }
 
 
+async def find_valid_password_reset_token(request: Request, token: str) -> dict | None:
+    return await request.app.state.password_reset_tokens_collection.find_one(
+        {
+            "token": token,
+            "used_at": None,
+            "expires_at": {"$gt": now_utc()},
+        }
+    )
+
+
 @app.get("/", include_in_schema=False)
 async def auth_page(request: Request):
     current_user = await load_current_user(request)
     if current_user is not None:
         return RedirectResponse(url="/my-registrations", status_code=303)
     return render_auth_page(success=notice_message(request.query_params.get("notice")))
+
+
+@app.post("/forgot-password", include_in_schema=False)
+async def forgot_password(
+    request: Request,
+    email: str = Form(...),
+):
+    forgot_values = {"email": email}
+    try:
+        payload = PasswordResetRequestPayload(email=normalize_email(email))
+    except ValidationError:
+        response = render_auth_page(
+            error="Введите корректный адрес электронной почты.",
+            forgot_values=forgot_values,
+        )
+        response.status_code = 400
+        return response
+
+    normalized_email = normalize_email(str(payload.email))
+    user = await request.app.state.users_collection.find_one({"email": normalized_email})
+    if user is not None:
+        token = create_password_reset_token()
+        created_at = now_utc()
+        expires_at = created_at + timedelta(minutes=request.app.state.settings.password_reset_ttl_minutes)
+        token_doc = {
+            "token": token,
+            "user_id": user["_id"],
+            "email": user["email"],
+            "created_at": created_at,
+            "updated_at": created_at,
+            "expires_at": expires_at,
+            "used_at": None,
+        }
+        reset_url = f'{request.url_for("reset_password_page_view")}?token={quote(token, safe="")}'
+        try:
+            await request.app.state.password_reset_tokens_collection.insert_one(token_doc)
+            task = build_password_reset_email_task(
+                recipient_email=user["email"],
+                reset_url=reset_url,
+                expires_at=expires_at,
+            )
+            await request.app.state.email_tasks_collection.insert_one(task)
+        except Exception as exc:
+            await request.app.state.password_reset_tokens_collection.delete_one({"token": token})
+            response = render_auth_page(
+                error=f"Не удалось поставить задачу на отправку письма: {exc}",
+                forgot_values=forgot_values,
+            )
+            response.status_code = 502
+            return response
+
+    return RedirectResponse(url="/?notice=password_reset_email_queued", status_code=303)
+
+
+@app.get("/reset-password", include_in_schema=False)
+async def reset_password_page_view(
+    request: Request,
+    token: str = "",
+):
+    normalized_token = token.strip()
+    if not normalized_token:
+        response = render_invalid_reset_token_page("Ссылка для смены пароля не содержит токен.")
+        response.status_code = 400
+        return response
+
+    token_doc = await find_valid_password_reset_token(request, normalized_token)
+    if token_doc is None:
+        response = render_invalid_reset_token_page("Ссылка для смены пароля недействительна или истекла.")
+        response.status_code = 400
+        return response
+
+    return render_password_reset_page(normalized_token)
+
+
+@app.post("/reset-password", include_in_schema=False)
+async def reset_password_submit(
+    request: Request,
+    token: str = Form(...),
+    password: str = Form(...),
+    password_repeat: str = Form(...),
+):
+    try:
+        payload = PasswordResetConfirmPayload(
+            token=token,
+            password=password,
+            password_repeat=password_repeat,
+        )
+    except ValidationError:
+        response = render_password_reset_page(token.strip(), error="Пароль должен содержать не менее 8 символов.")
+        response.status_code = 400
+        return response
+
+    if payload.password != payload.password_repeat:
+        response = render_password_reset_page(payload.token, error="Пароли не совпадают.")
+        response.status_code = 400
+        return response
+
+    token_doc = await find_valid_password_reset_token(request, payload.token)
+    if token_doc is None:
+        response = render_invalid_reset_token_page("Ссылка для смены пароля недействительна или истекла.")
+        response.status_code = 400
+        return response
+
+    password_data = hash_password(payload.password)
+    now = now_utc()
+    user_update = await request.app.state.users_collection.update_one(
+        {"_id": token_doc["user_id"]},
+        {"$set": password_data},
+    )
+    if user_update.matched_count == 0:
+        response = render_invalid_reset_token_page("Пользователь для этой ссылки не найден.")
+        response.status_code = 404
+        return response
+
+    await request.app.state.password_reset_tokens_collection.update_many(
+        {
+            "user_id": token_doc["user_id"],
+            "used_at": None,
+        },
+        {
+            "$set": {
+                "used_at": now,
+                "updated_at": now,
+            }
+        },
+    )
+    await request.app.state.sessions_collection.delete_many({"user_id": token_doc["user_id"]})
+
+    return RedirectResponse(url="/?notice=password_changed", status_code=303)
 
 
 @app.post("/register-account", include_in_schema=False)

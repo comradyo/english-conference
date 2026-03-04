@@ -18,6 +18,7 @@ async def lifespan(app: FastAPI):
     app.state.users_collection = database[settings.users_collection]
     app.state.registrations_collection = database[settings.registrations_collection]
     app.state.email_tasks_collection = database[settings.email_tasks_collection]
+    app.state.password_reset_tokens_collection = database[settings.password_reset_tokens_collection]
     app.state.sessions_collection = database[settings.sessions_collection]
 
     await app.state.users_collection.create_index("email", unique=True, name="uq_web_user_email")
@@ -38,6 +39,20 @@ async def lifespan(app: FastAPI):
     await app.state.email_tasks_collection.create_index(
         [("status", 1), ("available_at", 1), ("created_at", 1)],
         name="idx_email_tasks_status_available",
+    )
+    await app.state.password_reset_tokens_collection.create_index(
+        "token",
+        unique=True,
+        name="uq_password_reset_token",
+    )
+    await app.state.password_reset_tokens_collection.create_index(
+        "expires_at",
+        expireAfterSeconds=0,
+        name="ttl_password_reset_tokens",
+    )
+    await app.state.password_reset_tokens_collection.create_index(
+        [("user_id", 1), ("created_at", -1)],
+        name="idx_password_reset_tokens_user",
     )
 
     yield
