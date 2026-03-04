@@ -4,6 +4,7 @@ from pydantic import BaseModel, EmailStr, StringConstraints
 
 PARTICIPATION_OPTIONS = ("онлайн", "выступление с презентацией")
 SECTION_OPTIONS = ("ИБМ", "ИУ")
+REVIEW_STATUSES = ("На рассмотрении", "Принята", "Отклонена")
 MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
 
 NonEmptyText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]

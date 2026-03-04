@@ -8,7 +8,7 @@ from fastapi.responses import RedirectResponse, Response
 from pydantic import ValidationError
 from pymongo.errors import DuplicateKeyError
 
-from models import AccountLoginPayload, AccountRegistrationPayload, ConferenceRegistrationPayload
+from models import AccountLoginPayload, AccountRegistrationPayload, ConferenceRegistrationPayload, REVIEW_STATUSES
 from render import (
     layout,
     notice_message,
@@ -231,6 +231,7 @@ async def submit_conference_registration(
                 "size_bytes": len(file_content),
                 "data": Binary(file_content),
             },
+            "review_status": REVIEW_STATUSES[0],
             "admin_comment": "",
             "created_at": now_utc(),
         }
@@ -345,11 +346,22 @@ async def download_admin_file(
 async def save_admin_comment(
     registration_id: str,
     request: Request,
+    review_status: str = Form(""),
     admin_comment: str = Form(""),
 ):
     current_user, response = await require_admin(request, render_forbidden)
     if response:
         return response
+
+    if review_status not in REVIEW_STATUSES:
+        result = layout(
+            "Ошибка",
+            '<div class="empty">Указан недопустимый статус заявки.</div>',
+            current_user=current_user,
+            error="Недопустимый статус заявки.",
+        )
+        result.status_code = 400
+        return result
 
     object_id = parse_object_id(registration_id)
     if object_id is None:
@@ -364,7 +376,7 @@ async def save_admin_comment(
 
     update_result = await request.app.state.registrations_collection.update_one(
         {"_id": object_id},
-        {"$set": {"admin_comment": admin_comment.strip()}},
+        {"$set": {"admin_comment": admin_comment.strip(), "review_status": review_status}},
     )
     if update_result.matched_count == 0:
         result = layout(

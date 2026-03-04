@@ -4,14 +4,14 @@ from typing import Any
 
 from fastapi.responses import HTMLResponse
 
-from models import PARTICIPATION_OPTIONS, SECTION_OPTIONS
+from models import PARTICIPATION_OPTIONS, REVIEW_STATUSES, SECTION_OPTIONS
 
 
 def notice_message(key: str | None) -> str | None:
     mapping = {
         "login_required": "Сначала войдите в личный кабинет.",
         "logged_out": "Сеанс завершён.",
-        "comment_saved": "Комментарий администратора сохранён.",
+        "comment_saved": "Комментарий и статус заявки сохранены.",
     }
     return mapping.get(key)
 
@@ -42,7 +42,7 @@ h1 {{ margin:0; font-size:clamp(2rem, 4vw, 2.7rem); line-height:1.05; }} h2 {{ m
 form, .cards, .meta, label, .meta-row {{ display:grid; gap:14px; }} .cards {{ gap:16px; }} .meta {{ gap:10px; }} label, .meta-row {{ gap:6px; font-weight:600; }}
 .meta-row span {{ color:var(--muted); font-size:.9rem; font-weight:400; }}
 input, select, textarea, button {{ width:100%; font:inherit; color:inherit; border-radius:14px; border:1px solid var(--line); background:#fff; padding:12px 14px; }}
-textarea {{ min-height:110px; resize:vertical; }} button {{ border:none; cursor:pointer; background:linear-gradient(135deg, #0f5959, #207070); color:#fff; font-weight:700; min-height:46px; }} .action-link {{ display:inline-flex; align-items:center; justify-content:center; width:100%; min-height:46px; padding:12px 14px; border-radius:14px; background:var(--soft); color:var(--accent); font-weight:700; text-decoration:none; }}
+textarea {{ min-height:110px; resize:vertical; }} button {{ border:none; cursor:pointer; background:linear-gradient(135deg, #0f5959, #207070); color:#fff; font-weight:700; min-height:46px; }} .action-link {{ display:inline-flex; align-items:center; justify-content:center; width:100%; min-height:46px; padding:12px 14px; border-radius:14px; background:var(--soft); color:var(--accent); font-weight:700; text-decoration:none; }} .section-group {{ border:1px solid var(--line); border-radius:18px; background:#fffdfa; overflow:hidden; }} .section-group + .section-group {{ margin-top:16px; }} .section-summary {{ cursor:pointer; padding:16px 18px; font-weight:700; }} .table-wrap {{ overflow-x:auto; padding:0 18px 18px; }} .records-table {{ width:100%; border-collapse:collapse; min-width:1100px; }} .records-table th, .records-table td {{ padding:12px 10px; vertical-align:top; border-top:1px solid var(--line); text-align:left; }} .records-table th {{ color:var(--muted); font-size:.9rem; font-weight:700; }} .records-table tbody tr:hover {{ background:rgba(15,89,89,.03); }} .status-pill {{ display:inline-block; padding:6px 10px; border-radius:999px; background:var(--soft); color:var(--accent); font-weight:700; }} .admin-tools {{ display:grid; gap:10px; min-width:260px; }} .admin-tools form {{ gap:10px; }} .admin-tools textarea {{ min-height:84px; }} .section-meta {{ color:var(--muted); font-weight:600; }}
 @media (max-width:820px) {{ .split, .grid {{ grid-template-columns:1fr; }} .shell {{ padding:18px; border-radius:18px; }} }}
 </style></head><body><main class="page"><section class="shell"><div class="topbar"><div><h1>{escape(title)}</h1></div>{user_badge(current_user)}</div><nav>{nav_html(current_user)}</nav>{banner(success, 'success')}{banner(error, 'error')}{body}</section></main></body></html>"""
     )
@@ -208,6 +208,7 @@ def render_conference_form(current_user: dict[str, Any], *, error: str | None = 
 def render_record_card(record: dict[str, Any], *, admin_mode: bool) -> str:
     file_info = record.get("file", {})
     file_name = str(file_info.get("filename", ""))
+    review_status = str(record.get("review_status") or REVIEW_STATUSES[0])
     rows = [
         meta_row("Фамилия", str(record.get("last_name", ""))),
         meta_row("Имя", str(record.get("first_name", ""))),
@@ -223,6 +224,7 @@ def render_record_card(record: dict[str, Any], *, admin_mode: bool) -> str:
         meta_row("Размер файла", f"{int(file_info.get('size_bytes', 0))} байт"),
         meta_row("Создано", format_dt(record.get("created_at"))),
     ]
+    rows.append(meta_row("Статус", review_status))
     rows[10] = meta_row(
         "\u0424\u0430\u0439\u043b \u043f\u0443\u0431\u043b\u0438\u043a\u0430\u0446\u0438\u0438",
         file_name or "\u041d\u0435\u0442 \u0444\u0430\u0439\u043b\u0430",
@@ -245,6 +247,88 @@ def render_record_card(record: dict[str, Any], *, admin_mode: bool) -> str:
     return f'<article class="card"><div class="card-title"><strong>{escape(str(record.get("last_name", "")))} {escape(str(record.get("first_name", "")))}</strong><span>{escape(str(record.get("_id", "")))}</span></div><div class="meta">{"".join(rows)}{comment_block}</div></article>'
 
 
+def render_admin_table(records: list[dict[str, Any]]) -> str:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for record in records:
+        section = str(record.get("section") or "Без секции")
+        grouped.setdefault(section, []).append(record)
+
+    ordered_sections = list(SECTION_OPTIONS)
+    ordered_sections.extend(sorted(key for key in grouped if key not in SECTION_OPTIONS))
+
+    sections_html: list[str] = []
+    for section in ordered_sections:
+        section_records = grouped.get(section)
+        if not section_records:
+            continue
+
+        rows_html: list[str] = []
+        for record in section_records:
+            file_info = record.get("file", {})
+            file_name = str(file_info.get("filename", "")) or "Нет файла"
+            review_status = str(record.get("review_status") or REVIEW_STATUSES[0])
+            status_options = "".join(
+                f'<option value="{escape(status, quote=True)}"{" selected" if status == review_status else ""}>{escape(status)}</option>'
+                for status in REVIEW_STATUSES
+            )
+            download_html = ""
+            if file_info.get("filename"):
+                download_html = f'<a class="action-link" href="/englishconfernceregistartions2026/file/{record["_id"]}">Скачать файл</a>'
+
+            rows_html.append(
+                f"""
+                <tr>
+                  <td>{escape(str(record.get("last_name", "")))} {escape(str(record.get("first_name", "")))}</td>
+                  <td>{escape(str(record.get("owner_email", "")))}</td>
+                  <td>{escape(str(record.get("participation", "")))}</td>
+                  <td>{escape(str(record.get("publication_title", "")))}</td>
+                  <td>{escape(file_name)}</td>
+                  <td><span class="status-pill">{escape(review_status)}</span></td>
+                  <td>{escape(format_dt(record.get("created_at")))}</td>
+                  <td>
+                    <div class="admin-tools">
+                      {download_html}
+                      <form method="post" action="/englishconfernceregistartions2026/comment/{record["_id"]}">
+                        <label>Статус<select name="review_status">{status_options}</select></label>
+                        <label>Комментарий<textarea name="admin_comment">{escape(str(record.get("admin_comment") or ""))}</textarea></label>
+                        <button type="submit">Сохранить</button>
+                      </form>
+                    </div>
+                  </td>
+                </tr>
+                """
+            )
+
+        sections_html.append(
+            f"""
+            <details class="section-group" open>
+              <summary class="section-summary">{escape(section)} <span class="section-meta">({len(section_records)} заявок)</span></summary>
+              <div class="table-wrap">
+                <table class="records-table">
+                  <thead>
+                    <tr>
+                      <th>Участник</th>
+                      <th>Аккаунт</th>
+                      <th>Участие</th>
+                      <th>Публикация</th>
+                      <th>Файл</th>
+                      <th>Статус</th>
+                      <th>Создано</th>
+                      <th>Действия</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {''.join(rows_html)}
+                  </tbody>
+                </table>
+              </div>
+            </details>
+            """
+        )
+
+    return "".join(sections_html)
+
+
 def render_records_page(
     title: str,
     current_user: dict[str, Any],
@@ -256,7 +340,10 @@ def render_records_page(
     empty_action_html: str = "",
 ) -> HTMLResponse:
     if records:
-        body = f'<section class="cards">{"".join(render_record_card(record, admin_mode=admin_mode) for record in records)}</section>'
+        if admin_mode:
+            body = render_admin_table(records)
+        else:
+            body = f'<section class="cards">{"".join(render_record_card(record, admin_mode=admin_mode) for record in records)}</section>'
     else:
         body = f'<div class="empty">{escape(empty_text)}{empty_action_html}</div>'
     return layout(title, body, current_user=current_user, success=success)
