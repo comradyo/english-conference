@@ -1,10 +1,13 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from html import escape
 from typing import Any
 
 from fastapi.responses import HTMLResponse
 
 from models import PARTICIPATION_OPTIONS, REVIEW_STATUSES, SECTION_OPTIONS
+
+
+MOSCOW_TZ = timezone(timedelta(hours=3), name="UTC+3")
 
 
 def notice_message(key: str | None) -> str | None:
@@ -31,7 +34,7 @@ def layout(
 <style>
 :root {{ --bg:#f5efe7; --panel:#fffdf9; --line:#d7d2c8; --accent:#0f5959; --soft:#d9efef; --text:#1f2529; --muted:#60696f; --danger-bg:#f8dddd; --danger-text:#7f2020; --ok-bg:#dff3e3; --ok-text:#155728; font-family:"Segoe UI",Tahoma,Geneva,Verdana,sans-serif; }}
 * {{ box-sizing:border-box; }} body {{ margin:0; min-height:100vh; color:var(--text); background:radial-gradient(circle at top right, rgba(15,89,89,.12), transparent 28%), radial-gradient(circle at bottom left, rgba(180,83,9,.1), transparent 20%), var(--bg); }}
-.page {{ width:min(1100px, calc(100% - 32px)); margin:28px auto; }} .shell {{ background:var(--panel); border:1px solid rgba(15,89,89,.1); border-radius:24px; padding:24px; box-shadow:0 18px 50px rgba(15,89,89,.08); }}
+.page {{ width:min(1600px, calc(100% - 32px)); margin:28px auto; }} .shell {{ background:var(--panel); border:1px solid rgba(15,89,89,.1); border-radius:24px; padding:24px; box-shadow:0 18px 50px rgba(15,89,89,.08); }}
 .topbar, nav, .card-title {{ display:flex; gap:12px; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; }} .topbar {{ margin-bottom:18px; }} nav {{ margin:18px 0 20px; }}
 h1 {{ margin:0; font-size:clamp(2rem, 4vw, 2.7rem); line-height:1.05; }} h2 {{ margin:0 0 14px; font-size:1.2rem; }} p {{ margin:0 0 14px; color:var(--muted); }}
 .subtitle {{ margin-top:8px; max-width:760px; }} .user-badge, nav a {{ padding:10px 14px; border-radius:999px; font-weight:600; text-decoration:none; }}
@@ -125,7 +128,7 @@ def meta_html_row(label: str, value_html: str) -> str:
 
 def format_dt(value: Any) -> str:
     if isinstance(value, datetime):
-        return value.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+        return value.astimezone(MOSCOW_TZ).strftime("%d.%m.%Y %H:%M (МСК)")
     return "Не указано"
 
 
@@ -371,10 +374,6 @@ def render_admin_table(
                     f'<a class="action-link" href="/englishconfernceregistartions2026/file/{record_id}/expert-opinion">Скачать экспертное заключение</a>'
                 )
             downloads_html = "".join(download_links)
-            files_cell = (
-                f'<div class="file-stack"><div><strong>Публикация:</strong> {escape(publication_name)}</div>'
-                f'<div><strong>Экспертное:</strong> {escape(expert_name)}</div></div>'
-            )
             contacts_cell = (
                 f'<div class="file-stack"><div>{escape(str(record.get("email", "")))}</div>'
                 f'<div>{escape(str(record.get("phone", "")))}</div></div>'
@@ -387,10 +386,8 @@ def render_admin_table(
                   <td>{contacts_cell}</td>
                   <td>{escape(str(record.get("participation", "")))}</td>
                   <td>{escape(str(record.get("publication_title", "")))}</td>
-                  <td>{files_cell}</td>
                   <td>{render_status_badge(review_status)}</td>
                   <td>{escape(format_dt(record.get("created_at")))}</td>
-                  <td><span class="row-action-hint">Открыть справа</span></td>
                 </tr>
                 """
             )
@@ -441,10 +438,8 @@ def render_admin_table(
                       <th>Контакты</th>
                       <th>Участие</th>
                       <th>Публикация</th>
-                      <th>Файлы</th>
                       <th>Статус</th>
                       <th>Создано</th>
-                      <th>Действия</th>
                     </tr>
                   </thead>
                   <tbody>
