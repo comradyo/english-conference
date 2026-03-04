@@ -102,8 +102,8 @@ TEXTS: dict[str, dict[str, str]] = {
         "en": "Preliminary publication file validation",
     },
     "precheck_desc": {
-        "ru": "Загрузите .docx-файл, чтобы проверить его перед отправкой основной заявки. Результат показывается сразу и не сохраняется в базе данных.",
-        "en": "Upload a .docx file to validate it before submitting the main application. The result is shown immediately and is not stored in the database.",
+        "ru": "Загрузите .docx-файл, чтобы проверить его перед отправкой основной заявки.",
+        "en": "Upload a .docx file to validate it before submitting the main application.",
     },
     "precheck_result": {"ru": "Результат проверки", "en": "Validation result"},
     "precheck_button": {"ru": "Проверить файл", "en": "Validate file"},
