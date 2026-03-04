@@ -9,6 +9,36 @@ from models import PARTICIPATION_OPTIONS, REVIEW_STATUSES, SECTION_OPTIONS
 
 MOSCOW_TZ = timezone(timedelta(hours=3), name="UTC+3")
 
+FIELD_LABELS = {
+    "_id": "ID заявки",
+    "owner_user_id": "ID пользователя",
+    "owner_email": "Email аккаунта",
+    "last_name": "Фамилия",
+    "first_name": "Имя",
+    "middle_name": "Отчество",
+    "place_of_study": "Место учёбы",
+    "department": "Кафедра",
+    "place_of_work": "Место работы",
+    "job_title": "Должность",
+    "phone": "Телефон",
+    "email": "Контактный email",
+    "participation": "Участие",
+    "section": "Секция",
+    "publication_title": "Название публикации",
+    "foreign_language_consultant": "ФИО Консультанта по иностранному языку",
+    "publication_file": "Файл публикации",
+    "publication_file.filename": "Файл публикации: имя",
+    "publication_file.content_type": "Файл публикации: тип",
+    "publication_file.size_bytes": "Файл публикации: размер",
+    "expert_opinion_file": "Экспертное заключение",
+    "expert_opinion_file.filename": "Экспертное заключение: имя",
+    "expert_opinion_file.content_type": "Экспертное заключение: тип",
+    "expert_opinion_file.size_bytes": "Экспертное заключение: размер",
+    "review_status": "Статус",
+    "admin_comment": "Комментарий к заявке",
+    "created_at": "Создано",
+}
+
 
 def notice_message(key: str | None) -> str | None:
     mapping = {
@@ -169,6 +199,51 @@ def render_highlight_block(label: str, body_html: str, *, extra_class: str = "")
         f'<div class="record-highlight-body">{body_html}</div>'
         "</section>"
     )
+
+
+def field_label(path: str) -> str:
+    return FIELD_LABELS.get(path, path.replace("_", " "))
+
+
+def render_object_fields(record: dict[str, Any]) -> str:
+    rows: list[str] = []
+
+    def append_field(path: str, value: Any) -> None:
+        if isinstance(value, dict):
+            summary = "Не указано" if not value else optional_value(value.get("filename"), empty="См. вложенные поля")
+            rows.append(meta_row(field_label(path), summary))
+            if not value:
+                return
+            for nested_key, nested_value in value.items():
+                if nested_key == "data":
+                    continue
+                append_field(f"{path}.{nested_key}", nested_value)
+            return
+        if path == "review_status":
+            status = str(value or REVIEW_STATUSES[0])
+            rows.append(meta_html_row(field_label(path), render_status_badge(status)))
+            return
+        if path == "admin_comment":
+            text = str(value or "").strip() or "Комментарий пока не добавлен."
+            rows.append(meta_row(field_label(path), text))
+            return
+        if path == "created_at" and isinstance(value, datetime):
+            rows.append(meta_row(field_label(path), format_dt(value)))
+            return
+        if value is None:
+            empty_value = "Не загружено" if path == "expert_opinion_file" else "Не указано"
+            rows.append(meta_row(field_label(path), empty_value))
+            return
+        text = str(value).strip()
+        if not text:
+            empty_value = "Не загружено" if path == "expert_opinion_file" else "Не указано"
+            rows.append(meta_row(field_label(path), empty_value))
+            return
+        rows.append(meta_row(field_label(path), text))
+
+    for key, value in record.items():
+        append_field(key, value)
+    return "".join(rows)
 
 
 def render_auth_page(*, error: str | None = None, success: str | None = None, register_values: dict[str, str] | None = None, login_values: dict[str, str] | None = None) -> HTMLResponse:
@@ -345,15 +420,23 @@ def render_admin_table(
         rows_html: list[str] = []
         for record in section_records:
             record_id = str(record.get("_id", ""))
+            last_name = str(record.get("last_name", "")).strip()
+            first_name = str(record.get("first_name", "")).strip()
+            middle_name = str(record.get("middle_name", "")).strip()
             full_name = " ".join(
                 part
                 for part in [
-                    str(record.get("last_name", "")).strip(),
-                    str(record.get("first_name", "")).strip(),
-                    str(record.get("middle_name", "")).strip(),
+                    last_name,
+                    first_name,
+                    middle_name,
                 ]
                 if part
             ) or "Без имени"
+            name_cell = "".join(
+                f"<div>{escape(part)}</div>"
+                for part in [last_name, first_name, middle_name]
+                if part
+            ) or "<div>Без имени</div>"
             publication_file = record.get("publication_file") or {}
             expert_opinion_file = record.get("expert_opinion_file") or {}
             publication_name = file_name(publication_file)
@@ -378,11 +461,12 @@ def render_admin_table(
                 f'<div class="file-stack"><div>{escape(str(record.get("email", "")))}</div>'
                 f'<div>{escape(str(record.get("phone", "")))}</div></div>'
             )
+            record_fields_html = render_object_fields(record)
 
             rows_html.append(
                 f"""
                 <tr class="admin-row{" is-active" if is_selected else ""}" data-admin-target="admin-actions-{record_id}" tabindex="0" role="button" aria-selected="{"true" if is_selected else "false"}">
-                  <td>{escape(full_name)}</td>
+                  <td><div class="file-stack">{name_cell}</div></td>
                   <td>{contacts_cell}</td>
                   <td>{escape(str(record.get("participation", "")))}</td>
                   <td>{escape(str(record.get("publication_title", "")))}</td>
@@ -396,24 +480,7 @@ def render_admin_table(
                 <section id="admin-actions-{record_id}" class="panel admin-side-card{" active" if is_selected else ""}" data-admin-card>
                   <h2>{escape(full_name)}</h2>
                   <p>Вы можете скачать файлы, изменить статус и оставить комментарий к заявке.</p>
-                  <div class="meta">
-                    {meta_row("Аккаунт", str(record.get("owner_email", "")))}
-                    {meta_row("Контактный email", str(record.get("email", "")))}
-                    {meta_row("Телефон", str(record.get("phone", "")))}
-                    {meta_row("Отчество", optional_value(record.get("middle_name")))}
-                    {meta_row("Место учёбы", str(record.get("place_of_study", "")))}
-                    {meta_row("Кафедра", str(record.get("department", "")))}
-                    {meta_row("Место работы", optional_value(record.get("place_of_work")))}
-                    {meta_row("Должность", optional_value(record.get("job_title")))}
-                    {meta_row("Участие", str(record.get("participation", "")))}
-                    {meta_row("Секция", str(record.get("section", "")))}
-                    {meta_row("Название публикации", str(record.get("publication_title", "")))}
-                    {meta_row("ФИО Консультанта по иностранному языку", str(record.get("foreign_language_consultant", "")))}
-                    {meta_row("Файл публикации", publication_name)}
-                    {meta_row("Экспертное заключение", expert_name)}
-                    {meta_html_row("Текущий статус", render_status_badge(review_status))}
-                    {meta_row("Создано", format_dt(record.get("created_at")))}
-                  </div>
+                  <div class="meta">{record_fields_html}</div>
                   <div class="admin-tools">
                     {downloads_html}
                     <form method="post" action="/englishconfernceregistartions2026/comment/{record_id}">
