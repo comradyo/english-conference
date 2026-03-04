@@ -52,6 +52,8 @@ services:
       timeout: 3s
       retries: 10
       start_period: 10s
+#    ports:
+#      - "80:8000"
     depends_on:
       mongo:
         condition: service_healthy
