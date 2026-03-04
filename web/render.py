@@ -247,7 +247,11 @@ def render_record_card(record: dict[str, Any], *, admin_mode: bool) -> str:
     return f'<article class="card"><div class="card-title"><strong>{escape(str(record.get("last_name", "")))} {escape(str(record.get("first_name", "")))}</strong><span>{escape(str(record.get("_id", "")))}</span></div><div class="meta">{"".join(rows)}{comment_block}</div></article>'
 
 
-def render_admin_table(records: list[dict[str, Any]]) -> str:
+def render_admin_table(
+    records: list[dict[str, Any]],
+    *,
+    selected_registration_id: str | None = None,
+) -> str:
     grouped: dict[str, list[dict[str, Any]]] = {}
     for record in records:
         section = str(record.get("section") or "Без секции")
@@ -257,6 +261,8 @@ def render_admin_table(records: list[dict[str, Any]]) -> str:
     ordered_sections.extend(sorted(key for key in grouped if key not in SECTION_OPTIONS))
 
     sections_html: list[str] = []
+    side_panels: list[str] = []
+    selected_registration_id = str(selected_registration_id or "").strip()
     for section in ordered_sections:
         section_records = grouped.get(section)
         if not section_records:
@@ -264,20 +270,22 @@ def render_admin_table(records: list[dict[str, Any]]) -> str:
 
         rows_html: list[str] = []
         for record in section_records:
+            record_id = str(record.get("_id", ""))
             file_info = record.get("file", {})
             file_name = str(file_info.get("filename", "")) or "Нет файла"
             review_status = str(record.get("review_status") or REVIEW_STATUSES[0])
+            is_selected = bool(selected_registration_id and selected_registration_id == record_id)
             status_options = "".join(
                 f'<option value="{escape(status, quote=True)}"{" selected" if status == review_status else ""}>{escape(status)}</option>'
                 for status in REVIEW_STATUSES
             )
             download_html = ""
             if file_info.get("filename"):
-                download_html = f'<a class="action-link" href="/englishconfernceregistartions2026/file/{record["_id"]}">Скачать файл</a>'
+                download_html = f'<a class="action-link" href="/englishconfernceregistartions2026/file/{record_id}">Скачать файл</a>'
 
             rows_html.append(
                 f"""
-                <tr>
+                <tr class="admin-row{" is-active" if is_selected else ""}" data-admin-target="admin-actions-{record_id}" tabindex="0" role="button" aria-selected="{"true" if is_selected else "false"}">
                   <td>{escape(str(record.get("last_name", "")))} {escape(str(record.get("first_name", "")))}</td>
                   <td>{escape(str(record.get("owner_email", "")))}</td>
                   <td>{escape(str(record.get("participation", "")))}</td>
@@ -285,17 +293,29 @@ def render_admin_table(records: list[dict[str, Any]]) -> str:
                   <td>{escape(file_name)}</td>
                   <td><span class="status-pill">{escape(review_status)}</span></td>
                   <td>{escape(format_dt(record.get("created_at")))}</td>
-                  <td>
-                    <div class="admin-tools">
-                      {download_html}
-                      <form method="post" action="/englishconfernceregistartions2026/comment/{record["_id"]}">
-                        <label>Статус<select name="review_status">{status_options}</select></label>
-                        <label>Комментарий<textarea name="admin_comment">{escape(str(record.get("admin_comment") or ""))}</textarea></label>
-                        <button type="submit">Сохранить</button>
-                      </form>
-                    </div>
-                  </td>
+                  <td><span class="row-action-hint">Открыть справа</span></td>
                 </tr>
+                """
+            )
+            side_panels.append(
+                f"""
+                <section id="admin-actions-{record_id}" class="panel admin-side-card{" active" if is_selected else ""}" data-admin-card>
+                  <h2>{escape(str(record.get("last_name", "")))} {escape(str(record.get("first_name", "")))}</h2>
+                  <p>Заявка пользователя {escape(str(record.get("owner_email", "")))}. Вы можете скачать файл, изменить статус и оставить комментарий.</p>
+                  <div class="meta">
+                    {meta_row("Секция", str(record.get("section", "")))}
+                    {meta_row("Тема публикации", str(record.get("publication_title", "")))}
+                    {meta_row("Текущий статус", review_status)}
+                  </div>
+                  <div class="admin-tools">
+                    {download_html}
+                    <form method="post" action="/englishconfernceregistartions2026/comment/{record_id}">
+                      <label>Статус<select name="review_status">{status_options}</select></label>
+                      <label>Комментарий<textarea name="admin_comment">{escape(str(record.get("admin_comment") or ""))}</textarea></label>
+                      <button type="submit">Сохранить</button>
+                    </form>
+                  </div>
+                </section>
                 """
             )
 
@@ -326,7 +346,75 @@ def render_admin_table(records: list[dict[str, Any]]) -> str:
             """
         )
 
-    return "".join(sections_html)
+    side_placeholder = (
+        '<div class="panel admin-side-placeholder" data-admin-placeholder>'
+        "<h2>Действия по заявке</h2>"
+        "<p>Нажмите на строку в таблице, чтобы открыть инструменты для выбранной заявки.</p>"
+        "</div>"
+    )
+    return f"""
+    <style>
+    .admin-layout {{ display:grid; grid-template-columns:minmax(0, 1fr) minmax(300px, 340px); gap:18px; align-items:start; }}
+    .admin-table-pane {{ min-width:0; }}
+    .admin-side-pane {{ position:sticky; top:24px; display:grid; gap:14px; }}
+    .admin-row {{ cursor:pointer; }}
+    .admin-row.is-active {{ background:rgba(15,89,89,.08); }}
+    .admin-row:focus-visible {{ outline:2px solid rgba(15,89,89,.35); outline-offset:-2px; }}
+    .admin-side-card {{ display:none; gap:14px; }}
+    .admin-side-card.active {{ display:grid; }}
+    .admin-side-placeholder[hidden] {{ display:none; }}
+    .row-action-hint {{ color:var(--accent); font-weight:700; white-space:nowrap; }}
+    @media (max-width:980px) {{ .admin-layout {{ grid-template-columns:1fr; }} .admin-side-pane {{ position:static; }} }}
+    </style>
+    <section class="admin-layout">
+      <div class="admin-table-pane">
+        {''.join(sections_html)}
+      </div>
+      <aside class="admin-side-pane">
+        {side_placeholder}
+        {''.join(side_panels)}
+      </aside>
+    </section>
+    <script>
+    (() => {{
+      const rows = Array.from(document.querySelectorAll('.admin-row[data-admin-target]'));
+      const panels = Array.from(document.querySelectorAll('[data-admin-card]'));
+      const placeholder = document.querySelector('[data-admin-placeholder]');
+      if (!rows.length) {{
+        return;
+      }}
+      const setActive = (targetId) => {{
+        let hasMatch = false;
+        rows.forEach((row) => {{
+          const active = row.dataset.adminTarget === targetId;
+          row.classList.toggle('is-active', active);
+          row.setAttribute('aria-selected', active ? 'true' : 'false');
+        }});
+        panels.forEach((panel) => {{
+          const active = panel.id === targetId;
+          panel.classList.toggle('active', active);
+          hasMatch = hasMatch || active;
+        }});
+        if (placeholder) {{
+          placeholder.hidden = hasMatch;
+        }}
+      }};
+      rows.forEach((row) => {{
+        row.addEventListener('click', () => setActive(row.dataset.adminTarget));
+        row.addEventListener('keydown', (event) => {{
+          if (event.key === 'Enter' || event.key === ' ') {{
+            event.preventDefault();
+            setActive(row.dataset.adminTarget);
+          }}
+        }});
+      }});
+      const activeRow = rows.find((row) => row.classList.contains('is-active'));
+      if (activeRow) {{
+        setActive(activeRow.dataset.adminTarget);
+      }}
+    }})();
+    </script>
+    """
 
 
 def render_records_page(
@@ -338,10 +426,11 @@ def render_records_page(
     success: str | None = None,
     empty_text: str,
     empty_action_html: str = "",
+    selected_registration_id: str | None = None,
 ) -> HTMLResponse:
     if records:
         if admin_mode:
-            body = render_admin_table(records)
+            body = render_admin_table(records, selected_registration_id=selected_registration_id)
         else:
             body = f'<section class="cards">{"".join(render_record_card(record, admin_mode=admin_mode) for record in records)}</section>'
     else:

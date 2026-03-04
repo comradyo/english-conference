@@ -285,6 +285,7 @@ async def admin_registrations(request: Request):
         admin_mode=True,
         success=notice_message(request.query_params.get("notice")),
         empty_text="В системе пока нет заявок.",
+        selected_registration_id=request.query_params.get("selected"),
     )
 
 
@@ -388,7 +389,10 @@ async def save_admin_comment(
         result.status_code = 404
         return result
 
-    return RedirectResponse(url="/englishconfernceregistartions2026?notice=comment_saved", status_code=303)
+    return RedirectResponse(
+        url=f"/englishconfernceregistartions2026?notice=comment_saved&selected={registration_id}",
+        status_code=303,
+    )
 
 
 @app.get("/health", include_in_schema=False)
