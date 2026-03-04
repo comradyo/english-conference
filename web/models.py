@@ -2,12 +2,14 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, EmailStr, StringConstraints
 
+
 PARTICIPATION_OPTIONS = (
     "Выступление с презентацией",
     "Online-презентация (для иногородних участников)",
     "Публикация в сборнике (без презентации)",
     "Гость",
 )
+
 SECTION_OPTIONS = (
     "Электроника и лазерная техника",
     "Фундаментальная математика и физика",
@@ -20,6 +22,7 @@ SECTION_OPTIONS = (
     "Инженерный бизнес и менеджмент",
     "Гуманитарные науки",
 )
+
 REVIEW_STATUSES = ("На рассмотрении", "Принята", "Отклонена")
 MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
 

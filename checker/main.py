@@ -9,6 +9,8 @@ import signal
 import tempfile
 from typing import Any
 
+from fastapi import FastAPI, File, UploadFile
+from fastapi.responses import PlainTextResponse
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection
 from pymongo import ReturnDocument
 
@@ -23,6 +25,8 @@ PROCESSING_STATUS = "Идёт проверка"
 PASSED_STATUS = "Ошибок не найдено"
 FAILED_VALIDATION_STATUS = "Найдены замечания"
 SYSTEM_ERROR_STATUS = "Ошибка проверки"
+
+api_app = FastAPI(title="Checker Internal API")
 
 
 def now_utc() -> datetime:
@@ -64,6 +68,33 @@ def validate_publication_content(content: bytes) -> list[str]:
                 os.unlink(temp_path)
             except FileNotFoundError:
                 pass
+
+
+def format_validation_result_text(errors: list[str]) -> str:
+    if not errors:
+        return "Предварительная проверка завершена: ошибок не найдено."
+    return "Предварительная проверка завершена: найдены замечания.\n- " + "\n- ".join(errors)
+
+
+@api_app.post("/validate", include_in_schema=False, response_class=PlainTextResponse)
+async def validate_file_api(file: UploadFile = File(...)) -> PlainTextResponse:
+    filename = (file.filename or "").strip()
+    if not filename:
+        return PlainTextResponse("Файл публикации обязателен.", status_code=400)
+    if not filename.lower().endswith(".docx"):
+        return PlainTextResponse("Можно загрузить только файл в формате .docx.", status_code=400)
+
+    content = await file.read()
+    if not content:
+        return PlainTextResponse("Загруженный файл пуст.", status_code=400)
+
+    try:
+        errors = await asyncio.to_thread(validate_publication_content, content)
+    except Exception as exc:
+        LOGGER.exception("API validation failed for %s", filename)
+        return PlainTextResponse(f"Не удалось выполнить проверку файла: {exc}", status_code=500)
+
+    return PlainTextResponse(format_validation_result_text(errors))
 
 
 async def ensure_indexes(collection: AsyncIOMotorCollection) -> None:

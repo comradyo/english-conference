@@ -493,12 +493,41 @@ def render_conference_form(
     error: str | None = None,
     success: str | None = None,
     values: dict[str, str] | None = None,
+    precheck_error: str | None = None,
+    precheck_file_name: str | None = None,
+    precheck_result_text: str | None = None,
 ) -> HTMLResponse:
     values = dict(values or {})
     values.setdefault("email", current_user["email"])
     values.setdefault("participation", PARTICIPATION_OPTIONS[0])
     values.setdefault("section", SECTION_OPTIONS[0])
+    precheck_result_html = ""
+    if precheck_result_text:
+        lines = [line.strip() for line in str(precheck_result_text).splitlines() if line.strip()]
+        rendered_text = "<br>".join(escape(line) for line in lines) if lines else escape(precheck_result_text)
+        file_name_html = ""
+        if precheck_file_name:
+            file_name_html = f'<p><strong>Файл:</strong> {escape(precheck_file_name)}</p>'
+        precheck_result_html = (
+            '<div class="record-highlight record-highlight-validation">'
+            '<span>Результат проверки</span>'
+            f'{file_name_html}<div class="record-highlight-body">{rendered_text}</div>'
+            "</div>"
+        )
+    precheck_section = f"""
+    <section class="panel">
+      <h2>Предварительная проверка файла публикации</h2>
+      <p>Загрузите .docx-файл, чтобы проверить его перед отправкой основной заявки.</p>
+      {banner(precheck_error, 'error')}
+      {precheck_result_html}
+      <form method="post" action="/conference/precheck" enctype="multipart/form-data">
+        <label><span class="field-caption">Файл публикации <span class="required-mark">*</span></span><input type="file" name="publication_file" accept=".docx" required></label>
+        <button type="submit">Проверить файл</button>
+      </form>
+    </section>
+    """
     body = f"""
+    {precheck_section}
     <section class="panel"><h2>Регистрация на конференцию</h2><p>После сохранения заявка появится в разделе "Мои заявки".</p>
       <form method="post" action="/conference/register" enctype="multipart/form-data">
         <div class="grid">

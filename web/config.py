@@ -17,6 +17,8 @@ class Settings:
     session_cookie_name: str
     session_ttl_hours: int
     password_reset_ttl_minutes: int
+    checker_api_url: str
+    checker_api_timeout_sec: int
     admin_emails: frozenset[str]
 
     @classmethod
@@ -41,5 +43,7 @@ class Settings:
             session_cookie_name=os.getenv("WEB_SESSION_COOKIE_NAME", "conference_session"),
             session_ttl_hours=int(os.getenv("WEB_SESSION_TTL_HOURS", str(SESSION_TTL_HOURS_DEFAULT))),
             password_reset_ttl_minutes=max(1, int(os.getenv("WEB_PASSWORD_RESET_TTL_MINUTES", "30"))),
+            checker_api_url=os.getenv("WEB_CHECKER_API_URL", "http://checker-api:8000/validate").strip(),
+            checker_api_timeout_sec=max(1, int(os.getenv("WEB_CHECKER_API_TIMEOUT_SEC", "30"))),
             admin_emails=admin_emails,
         )

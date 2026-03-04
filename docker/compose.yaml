@@ -43,6 +43,8 @@ services:
       WEB_SESSION_COOKIE_NAME: ${WEB_SESSION_COOKIE_NAME:-conference_session}
       WEB_SESSION_TTL_HOURS: ${WEB_SESSION_TTL_HOURS:-168}
       WEB_PASSWORD_RESET_TTL_MINUTES: ${WEB_PASSWORD_RESET_TTL_MINUTES:-30}
+      WEB_CHECKER_API_URL: ${WEB_CHECKER_API_URL:-http://checker-api:8000/validate}
+      WEB_CHECKER_API_TIMEOUT_SEC: ${WEB_CHECKER_API_TIMEOUT_SEC:-30}
       WEB_ADMIN_EMAILS: ${WEB_ADMIN_EMAILS:-}
     healthcheck:
       test: [ "CMD-SHELL", "curl -fsS http://localhost:8000/ready || exit 1" ]
@@ -55,6 +57,8 @@ services:
     depends_on:
       mongo:
         condition: service_healthy
+      checker-api:
+        condition: service_started
 
   mailer:
     image: ${COMPOSE_PROJECT_NAME}-mailer:${API_IMAGE_TAG:-latest}
@@ -95,6 +99,16 @@ services:
     depends_on:
       mongo:
         condition: service_healthy
+
+  checker-api:
+    image: ${COMPOSE_PROJECT_NAME}-checker:${API_IMAGE_TAG:-latest}
+    build:
+      context: ..
+      dockerfile: docker/checker.Dockerfile
+    restart: unless-stopped
+    command: ["uvicorn", "main:api_app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-info}
 
 #  worker:
 #    image: ${COMPOSE_PROJECT_NAME}-worker:${API_IMAGE_TAG:-latest}

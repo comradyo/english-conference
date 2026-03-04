@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+import httpx
 from urllib.parse import quote
 
 from bson.binary import Binary
@@ -69,6 +70,44 @@ def file_document(upload: UploadFile | None, content: bytes | None) -> dict[str,
         "size_bytes": len(content),
         "data": Binary(content),
     }
+
+
+async def request_publication_precheck(
+    request: Request,
+    *,
+    filename: str,
+    content: bytes,
+    content_type: str,
+) -> str:
+    settings = request.app.state.settings
+    target_url = settings.checker_api_url
+    if not target_url:
+        raise HTTPException(status_code=503, detail="Сервис предварительной проверки не настроен.")
+
+    async with httpx.AsyncClient(timeout=settings.checker_api_timeout_sec) as client:
+        try:
+            response = await client.post(
+                target_url,
+                files={
+                    "file": (
+                        filename,
+                        content,
+                        content_type or "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    )
+                },
+            )
+        except httpx.RequestError as exc:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Сервис предварительной проверки сейчас недоступен: {exc}",
+            ) from exc
+
+    response_text = response.text.strip() or "Сервис проверки не вернул текст результата."
+    if response.status_code == 400:
+        raise HTTPException(status_code=400, detail=response_text)
+    if response.is_error:
+        raise HTTPException(status_code=502, detail=response_text)
+    return response_text
 
 
 async def find_valid_password_reset_token(request: Request, token: str) -> dict | None:
@@ -322,6 +361,39 @@ async def conference_registration_page(request: Request):
     if response:
         return response
     return render_conference_form(current_user)
+
+
+@app.post("/conference/precheck")
+async def precheck_publication_file(
+    request: Request,
+    publication_file: UploadFile = File(...),
+):
+    current_user, response = await require_user(request)
+    if response:
+        return response
+
+    try:
+        publication_file_content = await read_docx(publication_file, field_label="Файл публикации")
+        if publication_file_content is None:
+            raise HTTPException(status_code=500, detail="Не удалось прочитать файл публикации.")
+        result_text = await request_publication_precheck(
+            request,
+            filename=(publication_file.filename or "").strip() or "publication.docx",
+            content=publication_file_content,
+            content_type=publication_file.content_type or "",
+        )
+    except HTTPException as exc:
+        result = render_conference_form(current_user, precheck_error=str(exc.detail))
+        result.status_code = exc.status_code
+        return result
+
+    result = render_conference_form(
+        current_user,
+        precheck_file_name=(publication_file.filename or "").strip(),
+        precheck_result_text=result_text,
+    )
+    result.status_code = 200
+    return result
 
 
 @app.post("/conference/register")
