@@ -134,7 +134,7 @@ def nav_html(current_user: dict[str, Any] | None, *, lang: str = DEFAULT_LANGUAG
         links.append(f'<a href="/conference/register">{escape(text(lang, "nav_register"))}</a>')
         links.append(f'<a href="/my-registrations">{escape(text(lang, "nav_my_records"))}</a>')
         if current_user.get("is_admin"):
-            links.append(f'<a href="/englishconfernceregistartions2026">{escape(text(lang, "nav_all_records"))}</a>')
+            links.append(f'<a href="/all_applications">{escape(text(lang, "nav_all_records"))}</a>')
         links.append(f'<a href="/logout">{escape(text(lang, "nav_logout"))}</a>')
     else:
         links.append(f'<a href="/">{escape(text(lang, "nav_auth"))}</a>')
@@ -758,11 +758,11 @@ def render_admin_table(
             download_links: list[str] = []
             if publication_file.get("filename"):
                 download_links.append(
-                    f'<a class="action-link" href="/englishconfernceregistartions2026/file/{record_id}/publication">{escape(text(lang, "admin_download_publication"))}</a>'
+                    f'<a class="action-link" href="/all_applications/file/{record_id}/publication">{escape(text(lang, "admin_download_publication"))}</a>'
                 )
             if expert_opinion_file.get("filename"):
                 download_links.append(
-                    f'<a class="action-link" href="/englishconfernceregistartions2026/file/{record_id}/expert-opinion">{escape(text(lang, "admin_download_expert"))}</a>'
+                    f'<a class="action-link" href="/all_applications/file/{record_id}/expert-opinion">{escape(text(lang, "admin_download_expert"))}</a>'
                 )
             downloads_html = "".join(download_links)
             contacts_cell = (
@@ -791,7 +791,7 @@ def render_admin_table(
                   <div class="meta">{record_fields_html}</div>
                   <div class="admin-tools">
                     {downloads_html}
-                    <form method="post" action="/englishconfernceregistartions2026/comment/{record_id}">
+                    <form method="post" action="/all_applications/comment/{record_id}">
                       <label>{escape(text(lang, "highlight_status"))}<select name="review_status">{status_options}</select></label>
                       <label>{escape(text(lang, "highlight_comment"))}<textarea name="admin_comment">{escape(str(record.get("admin_comment") or ""))}</textarea></label>
                       <button type="submit">{escape(text(lang, "admin_save"))}</button>

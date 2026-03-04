@@ -295,7 +295,7 @@ async def _save_admin_comment_impl(
     updated_record["admin_comment"] = trimmed_comment
     updated_record["review_status"] = review_status
     back_link_html = (
-        f'<a href="/englishconfernceregistartions2026?selected={registration_id}">'
+        f'<a href="/all_applications?selected={registration_id}">'
         f'{escape(text(lang, "back_to_records_link"))}</a>'
     )
     try:
@@ -324,7 +324,7 @@ async def _save_admin_comment_impl(
 
     return localized_redirect(
         request,
-        f"/englishconfernceregistartions2026?notice=comment_saved&selected={registration_id}",
+        f"/all_applications?notice=comment_saved&selected={registration_id}",
         status_code=303,
     )
 
@@ -791,7 +791,7 @@ async def my_registrations(request: Request):
     )
 
 
-@app.get("/englishconfernceregistartions2026")
+@app.get("/all_applications")
 async def admin_registrations(request: Request):
     lang = request_language(request)
     current_user, response = await require_admin(request, lambda user: render_forbidden(user, lang=lang))
@@ -817,7 +817,7 @@ async def admin_registrations(request: Request):
     )
 
 
-@app.get("/englishconfernceregistartions2026/file/{registration_id}/{file_kind}", include_in_schema=False)
+@app.get("/all_applications/file/{registration_id}/{file_kind}", include_in_schema=False)
 async def download_admin_file(
     registration_id: str,
     file_kind: str,
@@ -898,7 +898,7 @@ async def download_admin_file(
     return Response(content=bytes(file_data), media_type=content_type, headers=headers)
 
 
-@app.post("/englishconfernceregistartions2026/comment/{registration_id}", include_in_schema=False)
+@app.post("/all_applications/comment/{registration_id}", include_in_schema=False)
 async def save_admin_comment(
     registration_id: str,
     request: Request,
@@ -971,7 +971,7 @@ async def save_admin_comment(
             "Задача не поставлена",
             (
                 '<div class="empty">Изменения в заявке сохранены, но задачу на отправку письма поставить не удалось. '
-                f'<a href="/englishconfernceregistartions2026?selected={registration_id}">'
+                f'<a href="/all_applications?selected={registration_id}">'
                 "Вернуться к списку заявок</a></div>"
             ),
             current_user=current_user,
@@ -984,7 +984,7 @@ async def save_admin_comment(
             "Задача не поставлена",
             (
                 '<div class="empty">Изменения в заявке сохранены, но очередь email-уведомлений сейчас недоступна. '
-                f'<a href="/englishconfernceregistartions2026?selected={registration_id}">'
+                f'<a href="/all_applications?selected={registration_id}">'
                 "Вернуться к списку заявок</a></div>"
             ),
             current_user=current_user,
@@ -994,7 +994,7 @@ async def save_admin_comment(
         return result
 
     return RedirectResponse(
-        url=f"/englishconfernceregistartions2026?notice=comment_saved&selected={registration_id}",
+        url=f"/all_applications?notice=comment_saved&selected={registration_id}",
         status_code=303,
     )
 
