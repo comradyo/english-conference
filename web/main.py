@@ -30,6 +30,7 @@ from services import (
     remove_current_session,
     require_admin,
     require_user,
+    send_registration_update_email,
     set_session_cookie,
     validation_message,
 )
@@ -440,9 +441,24 @@ async def save_admin_comment(
         result.status_code = 404
         return result
 
+    record = await request.app.state.registrations_collection.find_one(
+        {"_id": object_id},
+        {"publication_file.data": 0, "expert_opinion_file.data": 0},
+    )
+    if not record:
+        result = layout(
+            "Ошибка",
+            '<div class="empty">Заявка не найдена.</div>',
+            current_user=current_user,
+            error="Заявка не найдена.",
+        )
+        result.status_code = 404
+        return result
+
+    trimmed_comment = admin_comment.strip()
     update_result = await request.app.state.registrations_collection.update_one(
         {"_id": object_id},
-        {"$set": {"admin_comment": admin_comment.strip(), "review_status": review_status}},
+        {"$set": {"admin_comment": trimmed_comment, "review_status": review_status}},
     )
     if update_result.matched_count == 0:
         result = layout(
@@ -452,6 +468,25 @@ async def save_admin_comment(
             error="Заявка не найдена.",
         )
         result.status_code = 404
+        return result
+
+    updated_record = dict(record)
+    updated_record["admin_comment"] = trimmed_comment
+    updated_record["review_status"] = review_status
+    try:
+        await send_registration_update_email(request.app.state.settings, updated_record)
+    except RuntimeError as exc:
+        result = layout(
+            "Уведомление не отправлено",
+            (
+                '<div class="empty">Изменения в заявке сохранены, но письмо отправить не удалось. '
+                f'<a href="/englishconfernceregistartions2026?selected={registration_id}">'
+                "Вернуться к списку заявок</a></div>"
+            ),
+            current_user=current_user,
+            error=str(exc),
+        )
+        result.status_code = 502
         return result
 
     return RedirectResponse(

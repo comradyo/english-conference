@@ -1,5 +1,9 @@
+import asyncio
 from datetime import datetime, timedelta, timezone
+from email.message import EmailMessage
 import secrets
+import smtplib
+import ssl
 from typing import Any
 
 from bson import ObjectId
@@ -163,3 +167,92 @@ def parse_object_id(value: str) -> ObjectId | None:
         return ObjectId(value)
     except Exception:
         return None
+
+
+def notification_email_configured(settings: Settings) -> bool:
+    import os
+    print(os.getenv("WEB_NOTIFICATION_EMAIL_PASSWORD", ""))
+    print(settings.notification_email_password)
+    print(settings.notification_email_sender,
+          settings.notification_email_password,
+          settings.notification_email_smtp_host,
+          settings.notification_email_smtp_port > 0)
+    return all(
+        [
+            settings.notification_email_sender,
+            settings.notification_email_password,
+            settings.notification_email_smtp_host,
+            settings.notification_email_smtp_port > 0,
+        ]
+    )
+
+
+def _send_message_via_smtp(settings: Settings, message: EmailMessage) -> None:
+    context = ssl.create_default_context()
+    if settings.notification_email_use_ssl:
+        with smtplib.SMTP_SSL(
+            settings.notification_email_smtp_host,
+            settings.notification_email_smtp_port,
+            timeout=20,
+            context=context,
+        ) as smtp:
+            smtp.login(settings.notification_email_sender, settings.notification_email_password)
+            smtp.send_message(message)
+        return
+
+    with smtplib.SMTP(
+        settings.notification_email_smtp_host,
+        settings.notification_email_smtp_port,
+        timeout=20,
+    ) as smtp:
+        smtp.ehlo()
+        smtp.starttls(context=context)
+        smtp.ehlo()
+        smtp.login(settings.notification_email_sender, settings.notification_email_password)
+        smtp.send_message(message)
+
+
+async def send_registration_update_email(settings: Settings, record: dict[str, Any]) -> None:
+    if not notification_email_configured(settings):
+        raise RuntimeError(
+            "Почтовые уведомления не настроены: заполните WEB_NOTIFICATION_EMAIL_* переменные среды."
+        )
+
+    recipient = normalize_email(str(record.get("email") or ""))
+    if "@" not in recipient:
+        raise RuntimeError("В заявке не указан корректный адрес электронной почты для уведомления.")
+
+    last_name = str(record.get("last_name") or "").strip()
+    first_name = str(record.get("first_name") or "").strip()
+    middle_name = str(record.get("middle_name") or "").strip()
+    full_name = " ".join(part for part in [last_name, first_name, middle_name] if part) or "участник"
+    publication_title = str(record.get("publication_title") or "").strip() or "Без названия"
+    review_status = str(record.get("review_status") or "").strip() or "На рассмотрении"
+    admin_comment = str(record.get("admin_comment") or "").strip() or "Комментарий не указан."
+    updated_at = now_utc().astimezone(timezone(timedelta(hours=3))).strftime("%d.%m.%Y %H:%M (МСК)")
+
+    message = EmailMessage()
+    message["Subject"] = "Обновление заявки на конференцию"
+    message["From"] = settings.notification_email_sender
+    message["To"] = recipient
+    message.set_content(
+        "\n".join(
+            [
+                "Здравствуйте!",
+                "",
+                "По вашей заявке на конференцию есть обновление.",
+                f"Участник: {full_name}",
+                f"Название публикации: {publication_title}",
+                f"Статус заявки: {review_status}",
+                f"Комментарий администратора: {admin_comment}",
+                f"Время обновления: {updated_at}",
+                "",
+                "Это письмо отправлено автоматически.",
+            ]
+        )
+    )
+
+    try:
+        await asyncio.to_thread(_send_message_via_smtp, settings, message)
+    except Exception as exc:
+        raise RuntimeError(f"Не удалось отправить email-уведомление: {exc}") from exc
