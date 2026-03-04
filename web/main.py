@@ -29,6 +29,7 @@ from render import (
 )
 from security import hash_password, verify_password
 from services import (
+    build_initial_publication_validation,
     build_registration_update_email_task,
     build_password_reset_email_task,
     clear_session_cookie,
@@ -422,6 +423,7 @@ async def submit_conference_registration(
             "foreign_language_consultant": payload.foreign_language_consultant,
             "publication_file": file_document(publication_file, publication_file_content),
             "expert_opinion_file": file_document(expert_opinion_file, expert_opinion_content),
+            "publication_validation": build_initial_publication_validation(),
             "review_status": REVIEW_STATUSES[0],
             "admin_comment": "",
             "created_at": now_utc(),

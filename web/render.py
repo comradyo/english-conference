@@ -10,6 +10,14 @@ from models import PARTICIPATION_OPTIONS, REVIEW_STATUSES, SECTION_OPTIONS
 MOSCOW_TZ = timezone(timedelta(hours=3), name="UTC+3")
 
 FIELD_LABELS = {
+    "publication_validation": "Автопроверка файла публикации",
+    "publication_validation.status": "Автопроверка: статус",
+    "publication_validation.summary": "Автопроверка: итог",
+    "publication_validation.errors": "Автопроверка: замечания",
+    "publication_validation.checked_at": "Автопроверка: завершена",
+    "publication_validation.started_at": "Автопроверка: начата",
+    "publication_validation.updated_at": "Автопроверка: обновлена",
+    "publication_validation.last_error": "Автопроверка: системная ошибка",
     "_id": "ID заявки",
     "owner_user_id": "ID пользователя",
     "owner_email": "Email аккаунта",
@@ -92,6 +100,7 @@ button {{ border:none; cursor:pointer; background:linear-gradient(135deg, #0f595
 .record-highlight span {{ display:block; margin-bottom:8px; color:var(--muted); font-size:.95rem; font-weight:600; }}
 .record-highlight-body {{ font-size:1.08rem; font-weight:700; line-height:1.45; }}
 .record-highlight-comment .record-highlight-body {{ font-size:1.02rem; font-weight:600; }}
+.record-highlight-validation .record-highlight-body {{ font-size:1rem; font-weight:600; }}
 .section-group {{ border:1px solid var(--line); border-radius:18px; background:#fffdfa; overflow:hidden; }}
 .section-group + .section-group {{ margin-top:16px; }}
 .section-summary {{ cursor:pointer; padding:16px 18px; font-weight:700; }}
@@ -177,6 +186,40 @@ def file_name(file_info: dict[str, Any] | None, *, empty: str = "Не загру
     return optional_value(file_info.get("filename"), empty=empty)
 
 
+def validation_summary_text(validation_info: dict[str, Any] | None) -> str:
+    if not isinstance(validation_info, dict):
+        return "Файл публикации ожидает автоматической проверки."
+    summary = str(validation_info.get("summary") or "").strip()
+    return summary or "Файл публикации ожидает автоматической проверки."
+
+
+def validation_errors_text(validation_info: dict[str, Any] | None) -> str:
+    if not isinstance(validation_info, dict):
+        return "Нет замечаний"
+    errors = validation_info.get("errors")
+    if not isinstance(errors, (list, tuple)):
+        return "Нет замечаний"
+    parts = [str(item).strip() for item in errors if str(item).strip()]
+    return "; ".join(parts) if parts else "Нет замечаний"
+
+
+def render_validation_details_html(validation_info: dict[str, Any] | None) -> str:
+    summary = escape(validation_summary_text(validation_info))
+    if not isinstance(validation_info, dict):
+        return summary
+
+    errors = validation_info.get("errors")
+    if not isinstance(errors, (list, tuple)):
+        return summary
+
+    parts = [str(item).strip() for item in errors if str(item).strip()]
+    if not parts:
+        return summary
+
+    errors_html = "<br>".join(escape(item) for item in parts)
+    return f"{summary}<br><br>{errors_html}"
+
+
 def status_tone_class(status: str) -> str:
     mapping = {
         "На рассмотрении": "status-pending",
@@ -209,7 +252,7 @@ def field_label(path: str) -> str:
     return FIELD_LABELS.get(path, path.replace("_", " "))
 
 
-def render_object_fields(record: dict[str, Any]) -> str:
+def _legacy_render_object_fields(record: dict[str, Any]) -> str:
     rows: list[str] = []
 
     def append_field(path: str, value: Any) -> None:
@@ -233,6 +276,58 @@ def render_object_fields(record: dict[str, Any]) -> str:
             return
         if path == "created_at" and isinstance(value, datetime):
             rows.append(meta_row(field_label(path), format_dt(value)))
+            return
+        if value is None:
+            empty_value = "Не загружено" if path == "expert_opinion_file" else "Не указано"
+            rows.append(meta_row(field_label(path), empty_value))
+            return
+        text = str(value).strip()
+        if not text:
+            empty_value = "Не загружено" if path == "expert_opinion_file" else "Не указано"
+            rows.append(meta_row(field_label(path), empty_value))
+            return
+        rows.append(meta_row(field_label(path), text))
+
+    for key, value in record.items():
+        append_field(key, value)
+    return "".join(rows)
+
+
+def render_object_fields(record: dict[str, Any]) -> str:
+    rows: list[str] = []
+
+    def append_field(path: str, value: Any) -> None:
+        if isinstance(value, dict):
+            if path == "publication_validation":
+                summary = validation_summary_text(value)
+            else:
+                summary = "Не указано" if not value else optional_value(value.get("filename"), empty="См. вложенные поля")
+            rows.append(meta_row(field_label(path), summary))
+            if not value:
+                return
+            for nested_key, nested_value in value.items():
+                if nested_key == "data":
+                    continue
+                append_field(f"{path}.{nested_key}", nested_value)
+            return
+        if path == "review_status":
+            status = str(value or REVIEW_STATUSES[0])
+            rows.append(meta_html_row(field_label(path), render_status_badge(status)))
+            return
+        if path == "admin_comment":
+            text = str(value or "").strip() or "Комментарий пока не добавлен."
+            rows.append(meta_row(field_label(path), text))
+            return
+        if isinstance(value, datetime):
+            rows.append(meta_row(field_label(path), format_dt(value)))
+            return
+        if isinstance(value, (list, tuple)):
+            parts = [str(item).strip() for item in value if str(item).strip()]
+            if not parts:
+                empty_value = "Нет замечаний" if path == "publication_validation.errors" else "Не указано"
+                rows.append(meta_row(field_label(path), empty_value))
+                return
+            rows.append(meta_html_row(field_label(path), "<br>".join(escape(item) for item in parts)))
             return
         if value is None:
             empty_value = "Не загружено" if path == "expert_opinion_file" else "Не указано"
@@ -424,7 +519,7 @@ def render_conference_form(current_user: dict[str, Any], *, error: str | None = 
     return layout("Регистрация на конференцию", body, current_user=current_user, success=success, error=error)
 
 
-def render_record_card(record: dict[str, Any], *, admin_mode: bool) -> str:
+def _legacy_render_record_card(record: dict[str, Any], *, admin_mode: bool) -> str:
     publication_file = record.get("publication_file") or {}
     expert_opinion_file = record.get("expert_opinion_file") or {}
     review_status = str(record.get("review_status") or REVIEW_STATUSES[0])
@@ -474,6 +569,69 @@ def render_record_card(record: dict[str, Any], *, admin_mode: bool) -> str:
         highlights_html = (
             '<section class="record-highlights"><br>'
             f'{render_highlight_block("Статус", render_status_badge(review_status, large=True))}'
+            f'{render_highlight_block("Комментарий к заявке", comment_html, extra_class="record-highlight-comment")}'
+            "</section>"
+        )
+        comment_block = ""
+    return f'<article class="card"><div class="card-title"><strong>{escape(full_name or "Заявка без имени")}</strong><span>{escape(str(record.get("_id", "")))}</span></div>{highlights_html}<div class="meta">{"".join(rows)}{comment_block}</div></article>'
+
+
+def render_record_card(record: dict[str, Any], *, admin_mode: bool) -> str:
+    publication_file = record.get("publication_file") or {}
+    expert_opinion_file = record.get("expert_opinion_file") or {}
+    publication_validation = record.get("publication_validation") or {}
+    review_status = str(record.get("review_status") or REVIEW_STATUSES[0])
+    comment_text = str(record.get("admin_comment") or "").strip() or "Комментарий пока не добавлен."
+    validation_summary = validation_summary_text(publication_validation)
+    validation_errors = validation_errors_text(publication_validation)
+    full_name = " ".join(
+        part
+        for part in [
+            str(record.get("last_name", "")).strip(),
+            str(record.get("first_name", "")).strip(),
+            str(record.get("middle_name", "")).strip(),
+        ]
+        if part
+    )
+    rows = [
+        meta_row("Фамилия", str(record.get("last_name", ""))),
+        meta_row("Имя", str(record.get("first_name", ""))),
+        meta_row("Отчество", optional_value(record.get("middle_name"))),
+        meta_row("Место учёбы", str(record.get("place_of_study", ""))),
+        meta_row("Кафедра", str(record.get("department", ""))),
+        meta_row("Место работы", optional_value(record.get("place_of_work"))),
+        meta_row("Должность", optional_value(record.get("job_title"))),
+        meta_row("Телефон для связи", str(record.get("phone", ""))),
+        meta_row("Электронная почта", str(record.get("email", ""))),
+        meta_row("Участие", str(record.get("participation", ""))),
+        meta_row("Секция", str(record.get("section", ""))),
+        meta_row("Название публикации", str(record.get("publication_title", ""))),
+        meta_row("ФИО Консультанта по иностранному языку", str(record.get("foreign_language_consultant", ""))),
+        meta_row("Файл публикации", file_name(publication_file)),
+        meta_row(
+            "Размер файла публикации",
+            f"{int(publication_file.get('size_bytes', 0))} байт" if publication_file.get("filename") else "Не указано",
+        ),
+        meta_row("Результат автопроверки файла", validation_summary),
+        meta_row("Замечания автопроверки", validation_errors),
+        meta_row("Экспертное заключение", file_name(expert_opinion_file)),
+        meta_row(
+            "Размер экспертного заключения",
+            f"{int(expert_opinion_file.get('size_bytes', 0))} байт" if expert_opinion_file.get("filename") else "Не указано",
+        ),
+        meta_row("Создано", format_dt(record.get("created_at"))),
+    ]
+    if admin_mode:
+        rows.insert(0, meta_html_row("Статус", render_status_badge(review_status)))
+        rows.append(meta_row("Владелец аккаунта", str(record.get("owner_email", ""))))
+        comment_block = meta_row("Комментарий к заявке", comment_text)
+        highlights_html = ""
+    else:
+        comment_html = escape(comment_text).replace("\n", "<br>")
+        highlights_html = (
+            '<section class="record-highlights"><br>'
+            f'{render_highlight_block("Статус", render_status_badge(review_status, large=True))}'
+            f'{render_highlight_block("Автопроверка файла публикации", render_validation_details_html(publication_validation), extra_class="record-highlight-validation")}'
             f'{render_highlight_block("Комментарий к заявке", comment_html, extra_class="record-highlight-comment")}'
             "</section>"
         )

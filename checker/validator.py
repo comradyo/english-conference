@@ -112,7 +112,6 @@ class Validator:
         for p in self.doc.paragraphs:
             if "abstract." in p.text.lower():
                 text_len = len(p.text.lower().strip()) - len("abstract. ")
-                print(text_len)
                 if not (300 <= text_len <= 500):
                     self.errors.append("Аннотация должна быть 300–500 знаков")
                 italic = any(run.italic for run in p.runs)

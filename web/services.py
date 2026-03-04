@@ -198,6 +198,19 @@ def build_password_reset_email_task(
     }
 
 
+def build_initial_publication_validation() -> dict[str, Any]:
+    queued_at = now_utc()
+    return {
+        "status": "Ожидает проверки",
+        "summary": "Файл публикации ожидает автоматической проверки.",
+        "errors": [],
+        "checked_at": None,
+        "started_at": None,
+        "updated_at": queued_at,
+        "last_error": "",
+    }
+
+
 def build_registration_update_email_task(record: dict[str, Any]) -> dict[str, Any]:
     recipient = normalize_email(str(record.get("email") or ""))
     if "@" not in recipient:

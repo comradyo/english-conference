@@ -79,6 +79,23 @@ services:
       mongo:
         condition: service_healthy
 
+  checker:
+    image: ${COMPOSE_PROJECT_NAME}-checker:${API_IMAGE_TAG:-latest}
+    build:
+      context: ..
+      dockerfile: docker/checker.Dockerfile
+    restart: unless-stopped
+    environment:
+      MONGO_URI: ${MONGO_URI:-mongodb://mongo:27017}
+      MONGO_DB: ${MONGO_DB:-eng_conference}
+      WEB_REGISTRATIONS_COLLECTION: ${WEB_REGISTRATIONS_COLLECTION:-conference_registrations}
+      CHECKER_POLL_INTERVAL_SEC: ${CHECKER_POLL_INTERVAL_SEC:-5}
+      CHECKER_PROCESSING_TIMEOUT_SEC: ${CHECKER_PROCESSING_TIMEOUT_SEC:-300}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      mongo:
+        condition: service_healthy
+
 #  worker:
 #    image: ${COMPOSE_PROJECT_NAME}-worker:${API_IMAGE_TAG:-latest}
 #    build:
