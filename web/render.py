@@ -117,9 +117,9 @@ button {{ border:none; cursor:pointer; background:linear-gradient(135deg, #0f595
 .admin-tools {{ display:grid; gap:10px; min-width:260px; }}
 .admin-tools form {{ gap:10px; }}
 .admin-tools textarea {{ min-height:84px; }}
-.section-meta {{ color:var(--muted); font-weight:600; }}
+.section-meta {{ color:var(--muted); font-weight:600; }} .field-caption {{ display:inline-flex; align-items:baseline; gap:4px; }} .required-mark {{ color:#a33030; font-weight:800; }} .form-note {{ margin-top:14px; margin-bottom:0; font-size:.95rem; color:var(--muted); }} .site-footer {{ margin-top:18px; padding:14px 8px 0; text-align:center; color:var(--muted); font-size:.95rem; }}
 @media (max-width:820px) {{ .split, .grid {{ grid-template-columns:1fr; }} .shell {{ padding:18px; border-radius:18px; }} }}
-</style></head><body><main class="page"><section class="shell"><div class="topbar"><div><h1>{escape(title)}</h1></div>{user_badge(current_user)}</div><nav>{nav_html(current_user)}</nav>{banner(success, 'success')}{banner(error, 'error')}{body}</section></main></body></html>"""
+</style></head><body><main class="page"><section class="shell"><div class="topbar"><div><h1>{escape(title)}</h1></div>{user_badge(current_user)}</div><nav>{nav_html(current_user)}</nav>{banner(success, 'success')}{banner(error, 'error')}{body}</section><footer class="site-footer">© 2026 Московский государственный технический университет им. Н.Э. Баумана</footer></main></body></html>"""
     )
 
 
@@ -487,7 +487,13 @@ def render_invalid_reset_token_page(error: str) -> HTMLResponse:
     return layout("Смена пароля", body, error=error)
 
 
-def render_conference_form(current_user: dict[str, Any], *, error: str | None = None, success: str | None = None, values: dict[str, str] | None = None) -> HTMLResponse:
+def render_conference_form(
+    current_user: dict[str, Any],
+    *,
+    error: str | None = None,
+    success: str | None = None,
+    values: dict[str, str] | None = None,
+) -> HTMLResponse:
     values = dict(values or {})
     values.setdefault("email", current_user["email"])
     values.setdefault("participation", PARTICIPATION_OPTIONS[0])
@@ -496,24 +502,25 @@ def render_conference_form(current_user: dict[str, Any], *, error: str | None = 
     <section class="panel"><h2>Регистрация на конференцию</h2><p>После сохранения заявка появится в разделе "Мои заявки".</p>
       <form method="post" action="/conference/register" enctype="multipart/form-data">
         <div class="grid">
-          <label>Фамилия<input type="text" name="last_name" required value="{field_value(values, 'last_name')}"></label>
-          <label>Имя<input type="text" name="first_name" required value="{field_value(values, 'first_name')}"></label>
-          <label>Отчество<input type="text" name="middle_name" value="{field_value(values, 'middle_name')}"></label>
-          <label>Место учёбы<input type="text" name="place_of_study" required value="{field_value(values, 'place_of_study')}"></label>
-          <label>Кафедра<input type="text" name="department" required value="{field_value(values, 'department')}"></label>
-          <label>Место работы<input type="text" name="place_of_work" value="{field_value(values, 'place_of_work')}"></label>
-          <label>Должность<input type="text" name="job_title" value="{field_value(values, 'job_title')}"></label>
-          <label>Телефон для связи<input type="tel" name="phone" required value="{field_value(values, 'phone')}"></label>
-          <label>Электронная почта<input type="email" name="email" required value="{field_value(values, 'email')}"></label>
-          <label>Участие{render_select('participation', PARTICIPATION_OPTIONS, values.get('participation'))}</label>
-          <label>Секция{render_select('section', SECTION_OPTIONS, values.get('section'))}</label>
-          <label>Название публикации<input type="text" name="publication_title" required value="{field_value(values, 'publication_title')}"></label>
-          <label>ФИО Консультанта по иностранному языку<input type="text" name="foreign_language_consultant" required value="{field_value(values, 'foreign_language_consultant')}"></label>
-          <label>Файл публикации<input type="file" name="publication_file" accept=".docx" required></label>
-          <label>Экспертное заключение<input type="file" name="expert_opinion_file" accept=".docx"></label>
+          <label><span class="field-caption">Фамилия <span class="required-mark">*</span></span><input type="text" name="last_name" required value="{field_value(values, 'last_name')}"></label>
+          <label><span class="field-caption">Имя <span class="required-mark">*</span></span><input type="text" name="first_name" required value="{field_value(values, 'first_name')}"></label>
+          <label><span class="field-caption">Отчество</span><input type="text" name="middle_name" value="{field_value(values, 'middle_name')}"></label>
+          <label><span class="field-caption">Место учёбы <span class="required-mark">*</span></span><input type="text" name="place_of_study" required value="{field_value(values, 'place_of_study')}"></label>
+          <label><span class="field-caption">Кафедра <span class="required-mark">*</span></span><input type="text" name="department" required value="{field_value(values, 'department')}"></label>
+          <label><span class="field-caption">Место работы</span><input type="text" name="place_of_work" value="{field_value(values, 'place_of_work')}"></label>
+          <label><span class="field-caption">Должность</span><input type="text" name="job_title" value="{field_value(values, 'job_title')}"></label>
+          <label><span class="field-caption">Телефон для связи <span class="required-mark">*</span></span><input type="tel" name="phone" required value="{field_value(values, 'phone')}"></label>
+          <label><span class="field-caption">Электронная почта <span class="required-mark">*</span></span><input type="email" name="email" required value="{field_value(values, 'email')}"></label>
+          <label><span class="field-caption">Участие <span class="required-mark">*</span></span>{render_select('participation', PARTICIPATION_OPTIONS, values.get('participation'))}</label>
+          <label><span class="field-caption">Секция <span class="required-mark">*</span></span>{render_select('section', SECTION_OPTIONS, values.get('section'))}</label>
+          <label><span class="field-caption">Название публикации <span class="required-mark">*</span></span><input type="text" name="publication_title" required value="{field_value(values, 'publication_title')}"></label>
+          <label><span class="field-caption">ФИО Консультанта по иностранному языку <span class="required-mark">*</span></span><input type="text" name="foreign_language_consultant" required value="{field_value(values, 'foreign_language_consultant')}"></label>
+          <label><span class="field-caption">Файл публикации <span class="required-mark">*</span></span><input type="file" name="publication_file" accept=".docx" required></label>
+          <label><span class="field-caption">Экспертное заключение</span><input type="file" name="expert_opinion_file" accept=".docx"></label>
         </div>
         <button type="submit">Сохранить заявку</button>
       </form>
+      <p class="form-note"><span class="required-mark">*</span> Поля, обязательные для заполнения.</p>
     </section>
     """
     return layout("Регистрация на конференцию", body, current_user=current_user, success=success, error=error)
