@@ -116,10 +116,6 @@ TEXTS: dict[str, dict[str, str]] = {
         "ru": "Результат автопроверки файла",
         "en": "Automatic validation result",
     },
-    "validation_remarks_label": {
-        "ru": "Замечания автопроверки",
-        "en": "Automatic validation remarks",
-    },
     "publication_file_size": {"ru": "Размер файла публикации", "en": "Publication file size"},
     "expert_file_size": {"ru": "Размер экспертного заключения", "en": "Expert opinion file size"},
     "owner_account_email": {"ru": "Владелец аккаунта", "en": "Account owner"},

@@ -591,9 +591,9 @@ def _legacy_render_record_card(record: dict[str, Any], *, admin_mode: bool) -> s
     full_name = " ".join(
         part
         for part in [
-            str(record.get("last_name", "")).strip(),
-            str(record.get("first_name", "")).strip(),
-            str(record.get("middle_name", "")).strip(),
+            str(record.get("last_name") or "").strip(),
+            str(record.get("first_name") or "").strip(),
+            str(record.get("middle_name") or "").strip(),
         ]
         if part
     )
@@ -647,13 +647,12 @@ def render_record_card(record: dict[str, Any], *, admin_mode: bool, lang: str = 
     review_status = str(record.get("review_status") or REVIEW_STATUSES[0])
     comment_text = str(record.get("admin_comment") or "").strip() or text(lang, "comment_not_added")
     validation_summary = validation_summary_text(publication_validation, lang=lang)
-    validation_errors = validation_errors_text(publication_validation, lang=lang)
     full_name = " ".join(
         part
         for part in [
-            str(record.get("last_name", "")).strip(),
-            str(record.get("first_name", "")).strip(),
-            str(record.get("middle_name", "")).strip(),
+            str(record.get("last_name") or "").strip(),
+            str(record.get("first_name") or "").strip(),
+            str(record.get("middle_name") or "").strip(),
         ]
         if part
     )
@@ -677,7 +676,6 @@ def render_record_card(record: dict[str, Any], *, admin_mode: bool, lang: str = 
             f"{int(publication_file.get('size_bytes', 0))} {text(lang, 'bytes_unit')}" if publication_file.get("filename") else text(lang, "not_specified"),
         ),
         meta_row(text(lang, "validation_result_label"), validation_summary),
-        meta_row(text(lang, "validation_remarks_label"), validation_errors),
         meta_row(field_label("expert_opinion_file", lang=lang), file_name(expert_opinion_file, lang=lang)),
         meta_row(
             text(lang, "expert_file_size"),
@@ -700,7 +698,7 @@ def render_record_card(record: dict[str, Any], *, admin_mode: bool, lang: str = 
             "</section>"
         )
         comment_block = ""
-    return f'<article class="card"><div class="card-title"><strong>{escape(full_name or text(lang, "unnamed_record"))}</strong><span>{escape(str(record.get("_id", "")))}</span></div>{highlights_html}<div class="meta">{"".join(rows)}{comment_block}</div></article>'
+    return f'<article class="card"><div class="card-title"><strong>{escape(full_name or text(lang, "unnamed_record"))}</strong></div>{highlights_html}<div class="meta">{"".join(rows)}{comment_block}</div></article>'
 
 
 def render_admin_table(
@@ -728,9 +726,9 @@ def render_admin_table(
         rows_html: list[str] = []
         for record in section_records:
             record_id = str(record.get("_id", ""))
-            last_name = str(record.get("last_name", "")).strip()
-            first_name = str(record.get("first_name", "")).strip()
-            middle_name = str(record.get("middle_name", "")).strip()
+            last_name = str(record.get("last_name") or "").strip()
+            first_name = str(record.get("first_name") or "").strip()
+            middle_name = str(record.get("middle_name") or "").strip()
             full_name = " ".join(
                 part
                 for part in [
