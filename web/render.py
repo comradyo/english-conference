@@ -37,12 +37,41 @@ h1 {{ margin:0; font-size:clamp(2rem, 4vw, 2.7rem); line-height:1.05; }} h2 {{ m
 .subtitle {{ margin-top:8px; max-width:760px; }} .user-badge, nav a {{ padding:10px 14px; border-radius:999px; font-weight:600; text-decoration:none; }}
 .user-badge {{ background:#f1f6f6; border:1px solid var(--line); color:var(--accent); }} nav a {{ background:var(--soft); color:var(--accent); }}
 .banner {{ padding:14px 16px; border-radius:16px; margin-bottom:18px; font-weight:600; }} .banner.success {{ background:var(--ok-bg); color:var(--ok-text); }} .banner.error {{ background:var(--danger-bg); color:var(--danger-text); }}
-.split, .grid {{ display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:14px; }} .split {{ gap:18px; }}
-.panel, .card, .empty {{ border:1px solid var(--line); border-radius:18px; padding:18px; background:#fffdfa; }} .empty {{ border-style:dashed; color:var(--muted); }}
-form, .cards, .meta, label, .meta-row {{ display:grid; gap:14px; }} .cards {{ gap:16px; }} .meta {{ gap:10px; }} label, .meta-row {{ gap:6px; font-weight:600; }}
+.split, .grid {{ display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:14px; }}
+.split {{ gap:18px; }}
+.panel, .card, .empty {{ border:1px solid var(--line); border-radius:18px; padding:18px; background:#fffdfa; }}
+.empty {{ border-style:dashed; color:var(--muted); }}
+form, .cards, .meta, label, .meta-row, .record-highlights {{ display:grid; gap:14px; }}
+.cards {{ gap:16px; }}
+.meta {{ gap:10px; }}
+label, .meta-row {{ gap:6px; font-weight:600; }}
 .meta-row span {{ color:var(--muted); font-size:.9rem; font-weight:400; }}
 input, select, textarea, button {{ width:100%; font:inherit; color:inherit; border-radius:14px; border:1px solid var(--line); background:#fff; padding:12px 14px; }}
-textarea {{ min-height:110px; resize:vertical; }} button {{ border:none; cursor:pointer; background:linear-gradient(135deg, #0f5959, #207070); color:#fff; font-weight:700; min-height:46px; }} .action-link {{ display:inline-flex; align-items:center; justify-content:center; width:100%; min-height:46px; padding:12px 14px; border-radius:14px; background:var(--soft); color:var(--accent); font-weight:700; text-decoration:none; }} .section-group {{ border:1px solid var(--line); border-radius:18px; background:#fffdfa; overflow:hidden; }} .section-group + .section-group {{ margin-top:16px; }} .section-summary {{ cursor:pointer; padding:16px 18px; font-weight:700; }} .table-wrap {{ overflow-x:auto; padding:0 18px 18px; }} .records-table {{ width:100%; border-collapse:collapse; min-width:1100px; }} .records-table th, .records-table td {{ padding:12px 10px; vertical-align:top; border-top:1px solid var(--line); text-align:left; }} .records-table th {{ color:var(--muted); font-size:.9rem; font-weight:700; }} .records-table tbody tr:hover {{ background:rgba(15,89,89,.03); }} .status-pill {{ display:inline-block; padding:6px 10px; border-radius:999px; background:var(--soft); color:var(--accent); font-weight:700; }} .admin-tools {{ display:grid; gap:10px; min-width:260px; }} .admin-tools form {{ gap:10px; }} .admin-tools textarea {{ min-height:84px; }} .section-meta {{ color:var(--muted); font-weight:600; }}
+textarea {{ min-height:110px; resize:vertical; }}
+button {{ border:none; cursor:pointer; background:linear-gradient(135deg, #0f5959, #207070); color:#fff; font-weight:700; min-height:46px; }}
+.action-link {{ display:inline-flex; align-items:center; justify-content:center; width:100%; min-height:46px; padding:12px 14px; border-radius:14px; background:var(--soft); color:var(--accent); font-weight:700; text-decoration:none; }}
+.record-highlights {{ margin-bottom:16px; }}
+.record-highlight {{ border:1px solid var(--line); border-radius:16px; padding:16px; background:#fff; }}
+.record-highlight span {{ display:block; margin-bottom:8px; color:var(--muted); font-size:.95rem; font-weight:600; }}
+.record-highlight-body {{ font-size:1.08rem; font-weight:700; line-height:1.45; }}
+.record-highlight-comment .record-highlight-body {{ font-size:1.02rem; font-weight:600; }}
+.section-group {{ border:1px solid var(--line); border-radius:18px; background:#fffdfa; overflow:hidden; }}
+.section-group + .section-group {{ margin-top:16px; }}
+.section-summary {{ cursor:pointer; padding:16px 18px; font-weight:700; }}
+.table-wrap {{ overflow-x:auto; padding:0 18px 18px; }}
+.records-table {{ width:100%; border-collapse:collapse; min-width:1100px; }}
+.records-table th, .records-table td {{ padding:12px 10px; vertical-align:top; border-top:1px solid var(--line); text-align:left; }}
+.records-table th {{ color:var(--muted); font-size:.9rem; font-weight:700; }}
+.records-table tbody tr:hover {{ background:rgba(15,89,89,.03); }}
+.status-pill {{ display:inline-block; padding:6px 10px; border-radius:999px; background:#ece7cf; color:#6d5200; font-weight:700; }}
+.status-pill.status-pending {{ background:#ece7cf; color:#6d5200; }}
+.status-pill.status-accepted {{ background:#dff3e3; color:#155728; }}
+.status-pill.status-rejected {{ background:#f8dddd; color:#7f2020; }}
+.status-pill.status-pill-large {{ padding:10px 14px; font-size:1.02rem; }}
+.admin-tools {{ display:grid; gap:10px; min-width:260px; }}
+.admin-tools form {{ gap:10px; }}
+.admin-tools textarea {{ min-height:84px; }}
+.section-meta {{ color:var(--muted); font-weight:600; }}
 @media (max-width:820px) {{ .split, .grid {{ grid-template-columns:1fr; }} .shell {{ padding:18px; border-radius:18px; }} }}
 </style></head><body><main class="page"><section class="shell"><div class="topbar"><div><h1>{escape(title)}</h1></div>{user_badge(current_user)}</div><nav>{nav_html(current_user)}</nav>{banner(success, 'success')}{banner(error, 'error')}{body}</section></main></body></html>"""
     )
@@ -90,6 +119,10 @@ def meta_row(label: str, value: str) -> str:
     return f'<div class="meta-row"><span>{escape(label)}</span><strong>{escape(value)}</strong></div>'
 
 
+def meta_html_row(label: str, value_html: str) -> str:
+    return f'<div class="meta-row"><span>{escape(label)}</span><strong>{value_html}</strong></div>'
+
+
 def format_dt(value: Any) -> str:
     if isinstance(value, datetime):
         return value.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -105,6 +138,34 @@ def file_name(file_info: dict[str, Any] | None, *, empty: str = "Не загру
     if not isinstance(file_info, dict):
         return empty
     return optional_value(file_info.get("filename"), empty=empty)
+
+
+def status_tone_class(status: str) -> str:
+    mapping = {
+        "На рассмотрении": "status-pending",
+        "Принята": "status-accepted",
+        "Отклонена": "status-rejected",
+    }
+    return mapping.get(status, "status-pending")
+
+
+def render_status_badge(status: str, *, large: bool = False) -> str:
+    classes = ["status-pill", status_tone_class(status)]
+    if large:
+        classes.append("status-pill-large")
+    return f'<span class="{" ".join(classes)}">{escape(status)}</span>'
+
+
+def render_highlight_block(label: str, body_html: str, *, extra_class: str = "") -> str:
+    class_name = "record-highlight"
+    if extra_class:
+        class_name = f"{class_name} {extra_class}"
+    return (
+        f'<section class="{class_name}">'
+        f"<span>{escape(label)}</span>"
+        f'<div class="record-highlight-body">{body_html}</div>'
+        "</section>"
+    )
 
 
 def render_auth_page(*, error: str | None = None, success: str | None = None, register_values: dict[str, str] | None = None, login_values: dict[str, str] | None = None) -> HTMLResponse:
@@ -204,6 +265,7 @@ def render_record_card(record: dict[str, Any], *, admin_mode: bool) -> str:
     publication_file = record.get("publication_file") or {}
     expert_opinion_file = record.get("expert_opinion_file") or {}
     review_status = str(record.get("review_status") or REVIEW_STATUSES[0])
+    comment_text = str(record.get("admin_comment") or "").strip() or "Комментарий пока не добавлен."
     full_name = " ".join(
         part
         for part in [
@@ -238,13 +300,22 @@ def render_record_card(record: dict[str, Any], *, admin_mode: bool) -> str:
             f"{int(expert_opinion_file.get('size_bytes', 0))} байт" if expert_opinion_file.get("filename") else "Не указано",
         ),
         meta_row("Создано", format_dt(record.get("created_at"))),
-        meta_row("Статус", review_status),
     ]
     if admin_mode:
+        rows.insert(0, meta_html_row("Статус", render_status_badge(review_status)))
         rows.append(meta_row("Владелец аккаунта", str(record.get("owner_email", ""))))
-    comment_text = str(record.get("admin_comment") or "").strip() or "Комментарий пока не добавлен."
-    comment_block = meta_row("Комментарий к заявке", comment_text)
-    return f'<article class="card"><div class="card-title"><strong>{escape(full_name or "Заявка без имени")}</strong><span>{escape(str(record.get("_id", "")))}</span></div><div class="meta">{"".join(rows)}{comment_block}</div></article>'
+        comment_block = meta_row("Комментарий к заявке", comment_text)
+        highlights_html = ""
+    else:
+        comment_html = escape(comment_text).replace("\n", "<br>")
+        highlights_html = (
+            '<section class="record-highlights"><br>'
+            f'{render_highlight_block("Статус", render_status_badge(review_status, large=True))}'
+            f'{render_highlight_block("Комментарий к заявке", comment_html, extra_class="record-highlight-comment")}'
+            "</section>"
+        )
+        comment_block = ""
+    return f'<article class="card"><div class="card-title"><strong>{escape(full_name or "Заявка без имени")}</strong><span>{escape(str(record.get("_id", "")))}</span></div>{highlights_html}<div class="meta">{"".join(rows)}{comment_block}</div></article>'
 
 
 def render_admin_table(
@@ -317,7 +388,7 @@ def render_admin_table(
                   <td>{escape(str(record.get("participation", "")))}</td>
                   <td>{escape(str(record.get("publication_title", "")))}</td>
                   <td>{files_cell}</td>
-                  <td><span class="status-pill">{escape(review_status)}</span></td>
+                  <td>{render_status_badge(review_status)}</td>
                   <td>{escape(format_dt(record.get("created_at")))}</td>
                   <td><span class="row-action-hint">Открыть справа</span></td>
                 </tr>
@@ -343,7 +414,7 @@ def render_admin_table(
                     {meta_row("ФИО Консультанта по иностранному языку", str(record.get("foreign_language_consultant", "")))}
                     {meta_row("Файл публикации", publication_name)}
                     {meta_row("Экспертное заключение", expert_name)}
-                    {meta_row("Текущий статус", review_status)}
+                    {meta_html_row("Текущий статус", render_status_badge(review_status))}
                     {meta_row("Создано", format_dt(record.get("created_at")))}
                   </div>
                   <div class="admin-tools">
