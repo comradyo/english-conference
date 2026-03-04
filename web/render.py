@@ -321,9 +321,12 @@ def render_object_fields(record: dict[str, Any], *, lang: str = DEFAULT_LANGUAGE
             if not value:
                 return
             for nested_key, nested_value in value.items():
-                if nested_key == "data":
+                if nested_key in {"data", "summary", "checked_at", "started_at"}:
                     continue
                 append_field(f"{path}.{nested_key}", nested_value)
+            return
+        if path in {'publication_file.content_type', 'expert_opinion_file.content_type', 'publication_file.filename',
+                    'expert_opinion_file.filename', 'last_name', 'first_name', 'middle_name', 'owner_email'}:
             return
         if path == "publication_validation.status":
             status_value = validation_status_label(lang, str(value or ""))
@@ -361,8 +364,6 @@ def render_object_fields(record: dict[str, Any], *, lang: str = DEFAULT_LANGUAGE
             value_text = participation_label(lang, value_text)
         elif path == "section":
             value_text = section_label(lang, value_text)
-        elif path == "publication_validation.summary":
-            value_text = validation_summary_label(lang, value_text)
         rows.append(meta_row(field_label(path, lang=lang), value_text))
 
     for key, value in record.items():
@@ -745,8 +746,6 @@ def render_admin_table(
             ) or f'<div>{escape(text(lang, "unnamed_person"))}</div>'
             publication_file = record.get("publication_file") or {}
             expert_opinion_file = record.get("expert_opinion_file") or {}
-            publication_name = file_name(publication_file, lang=lang)
-            expert_name = file_name(expert_opinion_file, empty=text(lang, "not_uploaded"), lang=lang)
             review_status = str(record.get("review_status") or REVIEW_STATUSES[0])
             is_selected = bool(selected_registration_id and selected_registration_id == record_id)
             status_options = "".join(

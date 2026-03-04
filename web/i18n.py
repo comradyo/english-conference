@@ -144,7 +144,7 @@ TEXTS: dict[str, dict[str, str]] = {
     },
     "admin_download_publication": {"ru": "Скачать публикацию", "en": "Download publication"},
     "admin_download_expert": {"ru": "Скачать экспертное заключение", "en": "Download expert opinion"},
-    "admin_save": {"ru": "Сохранить", "en": "Save"},
+    "admin_save": {"ru": "Сохранить и уведомить по Email", "en": "Save and notify by Email"},
     "admin_table_participant": {"ru": "Участник", "en": "Participant"},
     "admin_table_contacts": {"ru": "Контакты", "en": "Contacts"},
     "admin_table_participation": {"ru": "Участие", "en": "Participation"},
@@ -259,10 +259,11 @@ TEXTS: dict[str, dict[str, str]] = {
         "ru": "В заявке не указан корректный адрес электронной почты для уведомления.",
         "en": "The application does not contain a valid email address for notification.",
     },
-    "checker_pending_status": {"ru": "Ожидает проверки", "en": "Pending validation"},
+    "checker_pending_status": {"ru": "Ожидает проверки. Обновите вкладку через несколько секунд.",
+                               "en": "Pending validation. Please refresh the tab in a few seconds."},
     "checker_pending_summary": {
-        "ru": "Файл публикации ожидает автоматической проверки.",
-        "en": "The publication file is waiting for automatic validation.",
+        "ru": "Файл публикации ожидает автоматической проверки. Обновите вкладку через несколько секунд.",
+        "en": "The publication file is waiting for automatic validation. Please refresh the tab in a few seconds.",
     },
 }
 
