@@ -19,6 +19,7 @@ from render import (
 )
 from security import hash_password, verify_password
 from services import (
+    build_registration_update_email_task,
     clear_session_cookie,
     create_session,
     is_admin_email,
@@ -30,7 +31,6 @@ from services import (
     remove_current_session,
     require_admin,
     require_user,
-    send_registration_update_email,
     set_session_cookie,
     validation_message,
 )
@@ -474,17 +474,31 @@ async def save_admin_comment(
     updated_record["admin_comment"] = trimmed_comment
     updated_record["review_status"] = review_status
     try:
-        await send_registration_update_email(request.app.state.settings, updated_record)
+        task = build_registration_update_email_task(updated_record)
+        await request.app.state.email_tasks_collection.insert_one(task)
     except RuntimeError as exc:
         result = layout(
-            "Уведомление не отправлено",
+            "Задача не поставлена",
             (
-                '<div class="empty">Изменения в заявке сохранены, но письмо отправить не удалось. '
+                '<div class="empty">Изменения в заявке сохранены, но задачу на отправку письма поставить не удалось. '
                 f'<a href="/englishconfernceregistartions2026?selected={registration_id}">'
                 "Вернуться к списку заявок</a></div>"
             ),
             current_user=current_user,
             error=str(exc),
+        )
+        result.status_code = 502
+        return result
+    except Exception as exc:
+        result = layout(
+            "Задача не поставлена",
+            (
+                '<div class="empty">Изменения в заявке сохранены, но очередь email-уведомлений сейчас недоступна. '
+                f'<a href="/englishconfernceregistartions2026?selected={registration_id}">'
+                "Вернуться к списку заявок</a></div>"
+            ),
+            current_user=current_user,
+            error=f"Не удалось записать задачу в очередь: {exc}",
         )
         result.status_code = 502
         return result

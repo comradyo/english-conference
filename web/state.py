@@ -17,6 +17,7 @@ async def lifespan(app: FastAPI):
     app.state.mongo_db = database
     app.state.users_collection = database[settings.users_collection]
     app.state.registrations_collection = database[settings.registrations_collection]
+    app.state.email_tasks_collection = database[settings.email_tasks_collection]
     app.state.sessions_collection = database[settings.sessions_collection]
 
     await app.state.users_collection.create_index("email", unique=True, name="uq_web_user_email")
@@ -33,6 +34,10 @@ async def lifespan(app: FastAPI):
     await app.state.registrations_collection.create_index(
         [("email", 1), ("created_at", -1)],
         name="idx_registration_email",
+    )
+    await app.state.email_tasks_collection.create_index(
+        [("status", 1), ("available_at", 1), ("created_at", 1)],
+        name="idx_email_tasks_status_available",
     )
 
     yield
