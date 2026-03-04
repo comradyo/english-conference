@@ -293,7 +293,6 @@ def render_admin_table(
                   <td>{escape(file_name)}</td>
                   <td><span class="status-pill">{escape(review_status)}</span></td>
                   <td>{escape(format_dt(record.get("created_at")))}</td>
-                  <td><span class="row-action-hint">Открыть справа</span></td>
                 </tr>
                 """
             )
@@ -334,7 +333,6 @@ def render_admin_table(
                       <th>Файл</th>
                       <th>Статус</th>
                       <th>Создано</th>
-                      <th>Действия</th>
                     </tr>
                   </thead>
                   <tbody>
