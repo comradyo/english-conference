@@ -4,59 +4,25 @@ from typing import Any
 
 from fastapi.responses import HTMLResponse
 
+from i18n import (
+    DEFAULT_LANGUAGE,
+    field_label as localized_field_label,
+    notice_text,
+    participation_label,
+    resolve_language,
+    review_status_label,
+    section_label,
+    text,
+    validation_status_label,
+    validation_summary_label,
+)
 from models import PARTICIPATION_OPTIONS, REVIEW_STATUSES, SECTION_OPTIONS
 
 
 MOSCOW_TZ = timezone(timedelta(hours=3), name="UTC+3")
 
-FIELD_LABELS = {
-    "publication_validation": "Автопроверка файла публикации",
-    "publication_validation.status": "Автопроверка: статус",
-    "publication_validation.summary": "Автопроверка: итог",
-    "publication_validation.errors": "Автопроверка: замечания",
-    "publication_validation.checked_at": "Автопроверка: завершена",
-    "publication_validation.started_at": "Автопроверка: начата",
-    "publication_validation.updated_at": "Автопроверка: обновлена",
-    "publication_validation.last_error": "Автопроверка: системная ошибка",
-    "_id": "ID заявки",
-    "owner_user_id": "ID пользователя",
-    "owner_email": "Email аккаунта",
-    "last_name": "Фамилия",
-    "first_name": "Имя",
-    "middle_name": "Отчество",
-    "place_of_study": "Место учёбы",
-    "department": "Кафедра",
-    "place_of_work": "Место работы",
-    "job_title": "Должность",
-    "phone": "Телефон",
-    "email": "Контактный email",
-    "participation": "Участие",
-    "section": "Секция",
-    "publication_title": "Название публикации",
-    "foreign_language_consultant": "ФИО Консультанта по иностранному языку",
-    "publication_file": "Файл публикации",
-    "publication_file.filename": "Файл публикации: имя",
-    "publication_file.content_type": "Файл публикации: тип",
-    "publication_file.size_bytes": "Файл публикации: размер",
-    "expert_opinion_file": "Экспертное заключение",
-    "expert_opinion_file.filename": "Экспертное заключение: имя",
-    "expert_opinion_file.content_type": "Экспертное заключение: тип",
-    "expert_opinion_file.size_bytes": "Экспертное заключение: размер",
-    "review_status": "Статус",
-    "admin_comment": "Комментарий к заявке",
-    "created_at": "Создано",
-}
-
-
-def notice_message(key: str | None) -> str | None:
-    mapping = {
-        "login_required": "Сначала войдите в личный кабинет.",
-        "logged_out": "Сеанс завершён.",
-        "comment_saved": "Комментарий и статус заявки сохранены.",
-        "password_reset_email_queued": "Если аккаунт с таким email существует, мы отправили ссылку для смены пароля.",
-        "password_changed": "Пароль обновлён. Теперь можно войти с новым паролем.",
-    }
-    return mapping.get(key)
+def notice_message(key: str | None, lang: str = DEFAULT_LANGUAGE) -> str | None:
+    return notice_text(lang, key)
 
 
 def layout(
@@ -66,10 +32,12 @@ def layout(
     current_user: dict[str, Any] | None = None,
     success: str | None = None,
     error: str | None = None,
+    lang: str = DEFAULT_LANGUAGE,
 ) -> HTMLResponse:
+    current_lang = resolve_language(lang)
     return HTMLResponse(
         content=f"""<!DOCTYPE html>
-<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<html lang="{escape(current_lang, quote=True)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{escape(title)}</title>
 <style>
 :root {{ --bg:#f5efe7; --panel:#fffdf9; --line:#d7d2c8; --accent:#0f5959; --soft:#d9efef; --text:#1f2529; --muted:#60696f; --danger-bg:#f8dddd; --danger-text:#7f2020; --ok-bg:#dff3e3; --ok-text:#155728; font-family:"Segoe UI",Tahoma,Geneva,Verdana,sans-serif; }}
@@ -77,8 +45,9 @@ def layout(
 .page {{ width:min(1600px, calc(100% - 32px)); margin:28px auto; }} .shell {{ background:var(--panel); border:1px solid rgba(15,89,89,.1); border-radius:24px; padding:24px; box-shadow:0 18px 50px rgba(15,89,89,.08); }}
 .topbar, nav, .card-title {{ display:flex; gap:12px; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; }} .topbar {{ margin-bottom:18px; }} nav {{ margin:18px 0 20px; }}
 h1 {{ margin:0; font-size:clamp(2rem, 4vw, 2.7rem); line-height:1.05; }} h2 {{ margin:0 0 14px; font-size:1.2rem; }} p {{ margin:0 0 14px; color:var(--muted); }}
-.subtitle {{ margin-top:8px; max-width:760px; }} .user-badge, nav a {{ padding:10px 14px; border-radius:999px; font-weight:600; text-decoration:none; }}
+.subtitle {{ margin-top:8px; max-width:760px; }} .user-badge, nav a, .language-link {{ padding:10px 14px; border-radius:999px; font-weight:600; text-decoration:none; }}
 .user-badge {{ background:#f1f6f6; border:1px solid var(--line); color:var(--accent); }} nav a {{ background:var(--soft); color:var(--accent); }}
+.language-switcher {{ display:flex; align-items:center; gap:8px; color:var(--muted); font-weight:600; }} .language-link {{ background:#fff; border:1px solid var(--line); color:var(--accent); }} .language-link.active {{ background:var(--soft); }}
 .banner {{ padding:14px 16px; border-radius:16px; margin-bottom:18px; font-weight:600; }} .banner.success {{ background:var(--ok-bg); color:var(--ok-text); }} .banner.error {{ background:var(--danger-bg); color:var(--danger-text); }}
 .split, .grid {{ display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:14px; }}
 .split {{ gap:18px; }}
@@ -119,7 +88,26 @@ button {{ border:none; cursor:pointer; background:linear-gradient(135deg, #0f595
 .admin-tools textarea {{ min-height:84px; }}
 .section-meta {{ color:var(--muted); font-weight:600; }} .field-caption {{ display:inline-flex; align-items:baseline; gap:4px; }} .required-mark {{ color:#a33030; font-weight:800; }} .form-note {{ margin-top:14px; margin-bottom:0; font-size:.95rem; color:var(--muted); }} .site-footer {{ margin-top:18px; padding:14px 8px 0; text-align:center; color:var(--muted); font-size:.95rem; }}
 @media (max-width:820px) {{ .split, .grid {{ grid-template-columns:1fr; }} .shell {{ padding:18px; border-radius:18px; }} }}
-</style></head><body><main class="page"><section class="shell"><div class="topbar"><div><h1>{escape(title)}</h1></div>{user_badge(current_user)}</div><nav>{nav_html(current_user)}</nav>{banner(success, 'success')}{banner(error, 'error')}{body}</section><footer class="site-footer">© 2026 Московский государственный технический университет им. Н.Э. Баумана</footer></main></body></html>"""
+</style></head><body><main class="page"><section class="shell"><div class="topbar"><div><h1>{escape(title)}</h1></div><div>{language_switcher(current_lang)}{user_badge(current_user, lang=current_lang)}</div></div><nav>{nav_html(current_user, lang=current_lang)}</nav>{banner(success, 'success')}{banner(error, 'error')}{body}</section><footer class="site-footer">{escape(text(current_lang, "footer"))}</footer></main><script>
+(() => {{
+  const links = Array.from(document.querySelectorAll('[data-lang-switch]'));
+  if (!links.length) {{
+    return;
+  }}
+  links.forEach((link) => {{
+    link.addEventListener('click', (event) => {{
+      event.preventDefault();
+      const targetLang = link.dataset.langSwitch;
+      if (!targetLang) {{
+        return;
+      }}
+      const url = new URL(window.location.href);
+      url.searchParams.set('lang', targetLang);
+      window.location.assign(url.toString());
+    }});
+  }});
+}})();
+</script></body></html>"""
     )
 
 
@@ -129,23 +117,34 @@ def banner(message: str | None, kind: str) -> str:
     return f'<div class="banner {kind}">{escape(message)}</div>'
 
 
-def nav_html(current_user: dict[str, Any] | None) -> str:
+def language_switcher(lang: str) -> str:
+    current_lang = resolve_language(lang)
+    links = []
+    for language_code, label_key in (("ru", "language_ru"), ("en", "language_en")):
+        active_class = " active" if language_code == current_lang else ""
+        links.append(
+            f'<a href="#" class="language-link{active_class}" data-lang-switch="{language_code}">{escape(text(current_lang, label_key))}</a>'
+        )
+    return f'<div class="language-switcher"><span>{escape(text(current_lang, "language_switcher_label"))}:</span>{"".join(links)}</div>'
+
+
+def nav_html(current_user: dict[str, Any] | None, *, lang: str = DEFAULT_LANGUAGE) -> str:
     links = []
     if current_user:
-        links.append('<a href="/conference/register">Регистрация на конференцию</a>')
-        links.append('<a href="/my-registrations">Мои заявки</a>')
+        links.append(f'<a href="/conference/register">{escape(text(lang, "nav_register"))}</a>')
+        links.append(f'<a href="/my-registrations">{escape(text(lang, "nav_my_records"))}</a>')
         if current_user.get("is_admin"):
-            links.append('<a href="/englishconfernceregistartions2026">Все заявки</a>')
-        links.append('<a href="/logout">Выйти</a>')
+            links.append(f'<a href="/englishconfernceregistartions2026">{escape(text(lang, "nav_all_records"))}</a>')
+        links.append(f'<a href="/logout">{escape(text(lang, "nav_logout"))}</a>')
     else:
-        links.append('<a href="/">Вход и регистрация</a>')
+        links.append(f'<a href="/">{escape(text(lang, "nav_auth"))}</a>')
     return "".join(links)
 
 
-def user_badge(current_user: dict[str, Any] | None) -> str:
+def user_badge(current_user: dict[str, Any] | None, *, lang: str = DEFAULT_LANGUAGE) -> str:
     if not current_user:
-        return '<div class="user-badge">Гость</div>'
-    role = "Администратор" if current_user.get("is_admin") else "Пользователь"
+        return f'<div class="user-badge">{escape(text(lang, "guest"))}</div>'
+    role = text(lang, "role_admin") if current_user.get("is_admin") else text(lang, "role_user")
     return f'<div class="user-badge">{escape(current_user["email"])} | {escape(role)}</div>'
 
 
@@ -153,11 +152,20 @@ def field_value(values: dict[str, str], key: str, default: str = "") -> str:
     return escape(values.get(key, default), quote=True)
 
 
-def render_select(name: str, options: tuple[str, ...], selected: str | None) -> str:
+def render_select(name: str, options: tuple[str, ...], selected: str | None, *, lang: str = DEFAULT_LANGUAGE) -> str:
     rendered = []
     for option in options:
         selected_attr = " selected" if selected == option else ""
-        rendered.append(f'<option value="{escape(option, quote=True)}"{selected_attr}>{escape(option)}</option>')
+        display_value = option
+        if name == "participation":
+            display_value = participation_label(lang, option)
+        elif name == "section":
+            display_value = section_label(lang, option)
+        elif name == "review_status":
+            display_value = review_status_label(lang, option)
+        rendered.append(
+            f'<option value="{escape(option, quote=True)}"{selected_attr}>{escape(display_value)}</option>'
+        )
     return f'<select name="{escape(name, quote=True)}">{"".join(rendered)}</select>'
 
 
@@ -169,42 +177,45 @@ def meta_html_row(label: str, value_html: str) -> str:
     return f'<div class="meta-row"><span>{escape(label)}</span><strong>{value_html}</strong></div>'
 
 
-def format_dt(value: Any) -> str:
+def format_dt(value: Any, *, lang: str = DEFAULT_LANGUAGE) -> str:
     if isinstance(value, datetime):
-        return value.astimezone(MOSCOW_TZ).strftime("%d.%m.%Y %H:%M (МСК)")
-    return "Не указано"
+        suffix = text(lang, "timezone_suffix")
+        return f'{value.astimezone(MOSCOW_TZ).strftime("%d.%m.%Y %H:%M")} ({suffix})'
+    return text(lang, "not_specified")
 
 
-def optional_value(value: Any, *, empty: str = "Не указано") -> str:
-    text = str(value or "").strip()
-    return text or empty
+def optional_value(value: Any, *, empty: str | None = None, lang: str = DEFAULT_LANGUAGE) -> str:
+    fallback = empty or text(lang, "not_specified")
+    value_text = str(value or "").strip()
+    return value_text or fallback
 
 
-def file_name(file_info: dict[str, Any] | None, *, empty: str = "Не загружен") -> str:
+def file_name(file_info: dict[str, Any] | None, *, empty: str | None = None, lang: str = DEFAULT_LANGUAGE) -> str:
+    fallback = empty or text(lang, "not_uploaded")
     if not isinstance(file_info, dict):
-        return empty
-    return optional_value(file_info.get("filename"), empty=empty)
+        return fallback
+    return optional_value(file_info.get("filename"), empty=fallback, lang=lang)
 
 
-def validation_summary_text(validation_info: dict[str, Any] | None) -> str:
+def validation_summary_text(validation_info: dict[str, Any] | None, *, lang: str = DEFAULT_LANGUAGE) -> str:
     if not isinstance(validation_info, dict):
-        return "Файл публикации ожидает автоматической проверки."
+        return text(lang, "checker_pending_summary")
     summary = str(validation_info.get("summary") or "").strip()
-    return summary or "Файл публикации ожидает автоматической проверки."
+    return validation_summary_label(lang, summary or text(lang, "checker_pending_summary"))
 
 
-def validation_errors_text(validation_info: dict[str, Any] | None) -> str:
+def validation_errors_text(validation_info: dict[str, Any] | None, *, lang: str = DEFAULT_LANGUAGE) -> str:
     if not isinstance(validation_info, dict):
-        return "Нет замечаний"
+        return text(lang, "no_remarks")
     errors = validation_info.get("errors")
     if not isinstance(errors, (list, tuple)):
-        return "Нет замечаний"
+        return text(lang, "no_remarks")
     parts = [str(item).strip() for item in errors if str(item).strip()]
-    return "; ".join(parts) if parts else "Нет замечаний"
+    return "; ".join(parts) if parts else text(lang, "no_remarks")
 
 
-def render_validation_details_html(validation_info: dict[str, Any] | None) -> str:
-    summary = escape(validation_summary_text(validation_info))
+def render_validation_details_html(validation_info: dict[str, Any] | None, *, lang: str = DEFAULT_LANGUAGE) -> str:
+    summary = escape(validation_summary_text(validation_info, lang=lang))
     if not isinstance(validation_info, dict):
         return summary
 
@@ -229,11 +240,11 @@ def status_tone_class(status: str) -> str:
     return mapping.get(status, "status-pending")
 
 
-def render_status_badge(status: str, *, large: bool = False) -> str:
+def render_status_badge(status: str, *, large: bool = False, lang: str = DEFAULT_LANGUAGE) -> str:
     classes = ["status-pill", status_tone_class(status)]
     if large:
         classes.append("status-pill-large")
-    return f'<span class="{" ".join(classes)}">{escape(status)}</span>'
+    return f'<span class="{" ".join(classes)}">{escape(review_status_label(lang, status))}</span>'
 
 
 def render_highlight_block(label: str, body_html: str, *, extra_class: str = "") -> str:
@@ -248,8 +259,8 @@ def render_highlight_block(label: str, body_html: str, *, extra_class: str = "")
     )
 
 
-def field_label(path: str) -> str:
-    return FIELD_LABELS.get(path, path.replace("_", " "))
+def field_label(path: str, *, lang: str = DEFAULT_LANGUAGE) -> str:
+    return localized_field_label(lang, path)
 
 
 def _legacy_render_object_fields(record: dict[str, Any]) -> str:
@@ -293,16 +304,20 @@ def _legacy_render_object_fields(record: dict[str, Any]) -> str:
     return "".join(rows)
 
 
-def render_object_fields(record: dict[str, Any]) -> str:
+def render_object_fields(record: dict[str, Any], *, lang: str = DEFAULT_LANGUAGE) -> str:
     rows: list[str] = []
 
     def append_field(path: str, value: Any) -> None:
         if isinstance(value, dict):
             if path == "publication_validation":
-                summary = validation_summary_text(value)
+                summary = validation_summary_text(value, lang=lang)
             else:
-                summary = "Не указано" if not value else optional_value(value.get("filename"), empty="См. вложенные поля")
-            rows.append(meta_row(field_label(path), summary))
+                summary = text(lang, "not_specified") if not value else optional_value(
+                    value.get("filename"),
+                    empty=text(lang, "see_nested_fields"),
+                    lang=lang,
+                )
+            rows.append(meta_row(field_label(path, lang=lang), summary))
             if not value:
                 return
             for nested_key, nested_value in value.items():
@@ -310,35 +325,45 @@ def render_object_fields(record: dict[str, Any]) -> str:
                     continue
                 append_field(f"{path}.{nested_key}", nested_value)
             return
+        if path == "publication_validation.status":
+            status_value = validation_status_label(lang, str(value or ""))
+            rows.append(meta_row(field_label(path, lang=lang), status_value or text(lang, "not_specified")))
+            return
         if path == "review_status":
             status = str(value or REVIEW_STATUSES[0])
-            rows.append(meta_html_row(field_label(path), render_status_badge(status)))
+            rows.append(meta_html_row(field_label(path, lang=lang), render_status_badge(status, lang=lang)))
             return
         if path == "admin_comment":
-            text = str(value or "").strip() or "Комментарий пока не добавлен."
-            rows.append(meta_row(field_label(path), text))
+            comment_text = str(value or "").strip() or text(lang, "comment_not_added")
+            rows.append(meta_row(field_label(path, lang=lang), comment_text))
             return
         if isinstance(value, datetime):
-            rows.append(meta_row(field_label(path), format_dt(value)))
+            rows.append(meta_row(field_label(path, lang=lang), format_dt(value, lang=lang)))
             return
         if isinstance(value, (list, tuple)):
             parts = [str(item).strip() for item in value if str(item).strip()]
             if not parts:
-                empty_value = "Нет замечаний" if path == "publication_validation.errors" else "Не указано"
-                rows.append(meta_row(field_label(path), empty_value))
+                empty_value = text(lang, "no_remarks") if path == "publication_validation.errors" else text(lang, "not_specified")
+                rows.append(meta_row(field_label(path, lang=lang), empty_value))
                 return
-            rows.append(meta_html_row(field_label(path), "<br>".join(escape(item) for item in parts)))
+            rows.append(meta_html_row(field_label(path, lang=lang), "<br>".join(escape(item) for item in parts)))
             return
         if value is None:
-            empty_value = "Не загружено" if path == "expert_opinion_file" else "Не указано"
-            rows.append(meta_row(field_label(path), empty_value))
+            empty_value = text(lang, "not_uploaded") if path == "expert_opinion_file" else text(lang, "not_specified")
+            rows.append(meta_row(field_label(path, lang=lang), empty_value))
             return
-        text = str(value).strip()
-        if not text:
-            empty_value = "Не загружено" if path == "expert_opinion_file" else "Не указано"
-            rows.append(meta_row(field_label(path), empty_value))
+        value_text = str(value).strip()
+        if not value_text:
+            empty_value = text(lang, "not_uploaded") if path == "expert_opinion_file" else text(lang, "not_specified")
+            rows.append(meta_row(field_label(path, lang=lang), empty_value))
             return
-        rows.append(meta_row(field_label(path), text))
+        if path == "participation":
+            value_text = participation_label(lang, value_text)
+        elif path == "section":
+            value_text = section_label(lang, value_text)
+        elif path == "publication_validation.summary":
+            value_text = validation_summary_label(lang, value_text)
+        rows.append(meta_row(field_label(path, lang=lang), value_text))
 
     for key, value in record.items():
         append_field(key, value)
@@ -352,6 +377,7 @@ def render_auth_page(
     register_values: dict[str, str] | None = None,
     login_values: dict[str, str] | None = None,
     forgot_values: dict[str, str] | None = None,
+    lang: str = DEFAULT_LANGUAGE,
 ) -> HTMLResponse:
     register_values = register_values or {}
     login_values = login_values or {}
@@ -363,38 +389,38 @@ def render_auth_page(
     forgot_hidden_attr = "" if show_forgot else " hidden"
     body = f"""
     <section class="cards">
-      <section class="panel" id="login-panel"{login_hidden_attr}><h2>Вход в личный кабинет</h2><p>Введите email и пароль, чтобы открыть форму регистрации на конференцию и список своих заявок.</p>
+      <section class="panel" id="login-panel"{login_hidden_attr}><h2>{escape(text(lang, "auth_login_title"))}</h2><p>{escape(text(lang, "auth_login_desc"))}</p>
         <form method="post" action="/login">
-          <label>Адрес электронной почты<input type="email" name="email" required value="{field_value(login_values, 'email')}"></label>
-          <label>Пароль<input type="password" name="password" required></label>
-          <button type="submit">Войти</button>
+          <label>{escape(text(lang, "auth_email"))}<input type="email" name="email" required value="{field_value(login_values, 'email')}"></label>
+          <label>{escape(text(lang, "auth_password"))}<input type="password" name="password" required></label>
+          <button type="submit">{escape(text(lang, "auth_sign_in"))}</button>
         </form>
         <br>
         <div class="auth-actions">
-          <button type="button" id="show-register-button">Создать аккаунт</button>
-          <button type="button" class="text-button" id="show-forgot-button">Забыли пароль?</button>
+          <button type="button" id="show-register-button">{escape(text(lang, "auth_create_account"))}</button>
+          <button type="button" class="text-button" id="show-forgot-button">{escape(text(lang, "auth_forgot_password"))}</button>
         </div>
       </section>
-      <section class="panel" id="register-panel"{register_hidden_attr}><h2>Регистрация</h2><p>Создайте личный кабинет. Повторно зарегистрировать тот же email нельзя.</p>
+      <section class="panel" id="register-panel"{register_hidden_attr}><h2>{escape(text(lang, "auth_register_title"))}</h2><p>{escape(text(lang, "auth_register_desc"))}</p>
         <form method="post" action="/register-account">
-          <label>Адрес электронной почты<input id="register-email" type="email" name="email" required value="{field_value(register_values, 'email')}"></label>
-          <label>Пароль<input type="password" name="password" required minlength="8"></label>
-          <label>Повторите пароль<input type="password" name="password_repeat" required minlength="8"></label>
-          <button type="submit">Зарегистрироваться</button>
+          <label>{escape(text(lang, "auth_email"))}<input id="register-email" type="email" name="email" required value="{field_value(register_values, 'email')}"></label>
+          <label>{escape(text(lang, "auth_password"))}<input type="password" name="password" required minlength="8"></label>
+          <label>{escape(text(lang, "auth_repeat_password"))}<input type="password" name="password_repeat" required minlength="8"></label>
+          <button type="submit">{escape(text(lang, "auth_register_button"))}</button>
         </form>
         <br>
         <div class="auth-actions">
-          <button type="button" id="show-login-button">Назад ко входу</button>
+          <button type="button" id="show-login-button">{escape(text(lang, "auth_back_to_login"))}</button>
         </div>
       </section>
-      <section class="panel" id="forgot-panel"{forgot_hidden_attr}><h2>Смена пароля</h2><p>Введите адрес электронной почты. Если аккаунт существует, мы отправим ссылку для установки нового пароля.</p>
+      <section class="panel" id="forgot-panel"{forgot_hidden_attr}><h2>{escape(text(lang, "forgot_title"))}</h2><p>{escape(text(lang, "forgot_desc"))}</p>
         <form method="post" action="/forgot-password">
-          <label>Адрес электронной почты<input id="forgot-email" type="email" name="email" required value="{field_value(forgot_values, 'email')}"></label>
-          <button type="submit">Отправить ссылку</button>
+          <label>{escape(text(lang, "auth_email"))}<input id="forgot-email" type="email" name="email" required value="{field_value(forgot_values, 'email')}"></label>
+          <button type="submit">{escape(text(lang, "forgot_button"))}</button>
         </form>
         <br>
         <div class="auth-actions">
-          <button type="button" id="show-login-from-forgot-button">Назад ко входу</button>
+          <button type="button" id="show-login-from-forgot-button">{escape(text(lang, "auth_back_to_login"))}</button>
         </div>
       </section>
     </section>
@@ -445,7 +471,7 @@ def render_auth_page(
       }})();
     </script>
     """
-    return layout("Личный кабинет конференции", body, success=success, error=error)
+    return layout(text(lang, "auth_page_title"), body, success=success, error=error, lang=lang)
 
 
 def render_password_reset_page(
@@ -453,38 +479,39 @@ def render_password_reset_page(
     *,
     error: str | None = None,
     success: str | None = None,
+    lang: str = DEFAULT_LANGUAGE,
 ) -> HTMLResponse:
     body = f"""
     <section class="panel">
-      <h2>Новый пароль</h2>
-      <p>Введите новый пароль для вашего аккаунта. Ссылка действует ограниченное время.</p>
+      <h2>{escape(text(lang, "reset_title"))}</h2>
+      <p>{escape(text(lang, "reset_desc"))}</p>
       <form method="post" action="/reset-password">
         <input type="hidden" name="token" value="{escape(token, quote=True)}">
-        <label>Новый пароль<input type="password" name="password" required minlength="8"></label>
-        <label>Повторите пароль<input type="password" name="password_repeat" required minlength="8"></label>
-        <button type="submit">Сохранить новый пароль</button>
+        <label>{escape(text(lang, "reset_title"))}<input type="password" name="password" required minlength="8"></label>
+        <label>{escape(text(lang, "auth_repeat_password"))}<input type="password" name="password_repeat" required minlength="8"></label>
+        <button type="submit">{escape(text(lang, "reset_save_button"))}</button>
       </form>
       <br>
       <div class="auth-actions">
-        <a class="action-link" href="/">Вернуться ко входу</a>
+        <a class="action-link" href="/">{escape(text(lang, "back_to_login"))}</a>
       </div>
     </section>
     """
-    return layout("Смена пароля", body, success=success, error=error)
+    return layout(text(lang, "reset_page_title"), body, success=success, error=error, lang=lang)
 
 
-def render_invalid_reset_token_page(error: str) -> HTMLResponse:
-    body = """
+def render_invalid_reset_token_page(error: str, *, lang: str = DEFAULT_LANGUAGE) -> HTMLResponse:
+    body = f"""
     <section class="panel">
-      <h2>Ссылка недействительна</h2>
-      <p>Запросите новое письмо для смены пароля и используйте свежую ссылку.</p>
+      <h2>{escape(text(lang, "reset_invalid_title"))}</h2>
+      <p>{escape(text(lang, "reset_invalid_desc"))}</p>
       <br>
       <div class="auth-actions">
-        <a class="action-link" href="/">Вернуться ко входу</a>
+        <a class="action-link" href="/">{escape(text(lang, "back_to_login"))}</a>
       </div>
     </section>
     """
-    return layout("Смена пароля", body, error=error)
+    return layout(text(lang, "reset_page_title"), body, error=error, lang=lang)
 
 
 def render_conference_form(
@@ -496,6 +523,7 @@ def render_conference_form(
     precheck_error: str | None = None,
     precheck_file_name: str | None = None,
     precheck_result_text: str | None = None,
+    lang: str = DEFAULT_LANGUAGE,
 ) -> HTMLResponse:
     values = dict(values or {})
     values.setdefault("email", current_user["email"])
@@ -507,52 +535,52 @@ def render_conference_form(
         rendered_text = "<br>".join(escape(line) for line in lines) if lines else escape(precheck_result_text)
         file_name_html = ""
         if precheck_file_name:
-            file_name_html = f'<p><strong>Файл:</strong> {escape(precheck_file_name)}</p>'
+            file_name_html = f'<p><strong>{escape(text(lang, "file_name_prefix"))}</strong> {escape(precheck_file_name)}</p>'
         precheck_result_html = (
             '<div class="record-highlight record-highlight-validation">'
-            '<span>Результат проверки</span>'
+            f'<span>{escape(text(lang, "precheck_result"))}</span>'
             f'{file_name_html}<div class="record-highlight-body">{rendered_text}</div>'
             "</div>"
         )
     precheck_section = f"""
     <section class="panel">
-      <h2>Предварительная проверка файла публикации</h2>
-      <p>Загрузите .docx-файл, чтобы проверить его перед отправкой основной заявки.</p>
+      <h2>{escape(text(lang, "precheck_title"))}</h2>
+      <p>{escape(text(lang, "precheck_desc"))}</p>
       {banner(precheck_error, 'error')}
       {precheck_result_html}
       <form method="post" action="/conference/precheck" enctype="multipart/form-data">
-        <label><span class="field-caption">Файл публикации <span class="required-mark">*</span></span><input type="file" name="publication_file" accept=".docx" required></label>
-        <button type="submit">Проверить файл</button>
+        <label><span class="field-caption">{escape(field_label("publication_file", lang=lang))} <span class="required-mark">*</span></span><input type="file" name="publication_file" accept=".docx" required></label>
+        <button type="submit">{escape(text(lang, "precheck_button"))}</button>
       </form>
     </section>
     """
     body = f"""
     {precheck_section}
-    <section class="panel"><h2>Регистрация на конференцию</h2><p>После сохранения заявка появится в разделе "Мои заявки".</p>
+    <section class="panel"><h2>{escape(text(lang, "conference_title"))}</h2><p>{escape(text(lang, "conference_desc"))}</p>
       <form method="post" action="/conference/register" enctype="multipart/form-data">
         <div class="grid">
-          <label><span class="field-caption">Фамилия <span class="required-mark">*</span></span><input type="text" name="last_name" required value="{field_value(values, 'last_name')}"></label>
-          <label><span class="field-caption">Имя <span class="required-mark">*</span></span><input type="text" name="first_name" required value="{field_value(values, 'first_name')}"></label>
-          <label><span class="field-caption">Отчество</span><input type="text" name="middle_name" value="{field_value(values, 'middle_name')}"></label>
-          <label><span class="field-caption">Место учёбы <span class="required-mark">*</span></span><input type="text" name="place_of_study" required value="{field_value(values, 'place_of_study')}"></label>
-          <label><span class="field-caption">Кафедра <span class="required-mark">*</span></span><input type="text" name="department" required value="{field_value(values, 'department')}"></label>
-          <label><span class="field-caption">Место работы</span><input type="text" name="place_of_work" value="{field_value(values, 'place_of_work')}"></label>
-          <label><span class="field-caption">Должность</span><input type="text" name="job_title" value="{field_value(values, 'job_title')}"></label>
-          <label><span class="field-caption">Телефон для связи <span class="required-mark">*</span></span><input type="tel" name="phone" required value="{field_value(values, 'phone')}"></label>
-          <label><span class="field-caption">Электронная почта <span class="required-mark">*</span></span><input type="email" name="email" required value="{field_value(values, 'email')}"></label>
-          <label><span class="field-caption">Участие <span class="required-mark">*</span></span>{render_select('participation', PARTICIPATION_OPTIONS, values.get('participation'))}</label>
-          <label><span class="field-caption">Секция <span class="required-mark">*</span></span>{render_select('section', SECTION_OPTIONS, values.get('section'))}</label>
-          <label><span class="field-caption">Название публикации <span class="required-mark">*</span></span><input type="text" name="publication_title" required value="{field_value(values, 'publication_title')}"></label>
-          <label><span class="field-caption">ФИО Консультанта по иностранному языку <span class="required-mark">*</span></span><input type="text" name="foreign_language_consultant" required value="{field_value(values, 'foreign_language_consultant')}"></label>
-          <label><span class="field-caption">Файл публикации <span class="required-mark">*</span></span><input type="file" name="publication_file" accept=".docx" required></label>
-          <label><span class="field-caption">Экспертное заключение</span><input type="file" name="expert_opinion_file" accept=".docx"></label>
+          <label><span class="field-caption">{escape(field_label("last_name", lang=lang))} <span class="required-mark">*</span></span><input type="text" name="last_name" required value="{field_value(values, 'last_name')}"></label>
+          <label><span class="field-caption">{escape(field_label("first_name", lang=lang))} <span class="required-mark">*</span></span><input type="text" name="first_name" required value="{field_value(values, 'first_name')}"></label>
+          <label><span class="field-caption">{escape(field_label("middle_name", lang=lang))}</span><input type="text" name="middle_name" value="{field_value(values, 'middle_name')}"></label>
+          <label><span class="field-caption">{escape(field_label("place_of_study", lang=lang))} <span class="required-mark">*</span></span><input type="text" name="place_of_study" required value="{field_value(values, 'place_of_study')}"></label>
+          <label><span class="field-caption">{escape(field_label("department", lang=lang))} <span class="required-mark">*</span></span><input type="text" name="department" required value="{field_value(values, 'department')}"></label>
+          <label><span class="field-caption">{escape(field_label("place_of_work", lang=lang))}</span><input type="text" name="place_of_work" value="{field_value(values, 'place_of_work')}"></label>
+          <label><span class="field-caption">{escape(field_label("job_title", lang=lang))}</span><input type="text" name="job_title" value="{field_value(values, 'job_title')}"></label>
+          <label><span class="field-caption">{escape(field_label("phone", lang=lang))} <span class="required-mark">*</span></span><input type="tel" name="phone" required value="{field_value(values, 'phone')}"></label>
+          <label><span class="field-caption">{escape(text(lang, "auth_email"))} <span class="required-mark">*</span></span><input type="email" name="email" required value="{field_value(values, 'email')}"></label>
+          <label><span class="field-caption">{escape(field_label("participation", lang=lang))} <span class="required-mark">*</span></span>{render_select('participation', PARTICIPATION_OPTIONS, values.get('participation'), lang=lang)}</label>
+          <label><span class="field-caption">{escape(field_label("section", lang=lang))} <span class="required-mark">*</span></span>{render_select('section', SECTION_OPTIONS, values.get('section'), lang=lang)}</label>
+          <label><span class="field-caption">{escape(field_label("publication_title", lang=lang))} <span class="required-mark">*</span></span><input type="text" name="publication_title" required value="{field_value(values, 'publication_title')}"></label>
+          <label><span class="field-caption">{escape(field_label("foreign_language_consultant", lang=lang))} <span class="required-mark">*</span></span><input type="text" name="foreign_language_consultant" required value="{field_value(values, 'foreign_language_consultant')}"></label>
+          <label><span class="field-caption">{escape(field_label("publication_file", lang=lang))} <span class="required-mark">*</span></span><input type="file" name="publication_file" accept=".docx" required></label>
+          <label><span class="field-caption">{escape(field_label("expert_opinion_file", lang=lang))}</span><input type="file" name="expert_opinion_file" accept=".docx"></label>
         </div>
-        <button type="submit">Сохранить заявку</button>
+        <button type="submit">{escape(text(lang, "submit_application"))}</button>
       </form>
-      <p class="form-note"><span class="required-mark">*</span> Поля, обязательные для заполнения.</p>
+      <p class="form-note"><span class="required-mark">*</span> {escape(text(lang, "required_note"))}</p>
     </section>
     """
-    return layout("Регистрация на конференцию", body, current_user=current_user, success=success, error=error)
+    return layout(text(lang, "conference_page_title"), body, current_user=current_user, success=success, error=error, lang=lang)
 
 
 def _legacy_render_record_card(record: dict[str, Any], *, admin_mode: bool) -> str:
@@ -612,14 +640,14 @@ def _legacy_render_record_card(record: dict[str, Any], *, admin_mode: bool) -> s
     return f'<article class="card"><div class="card-title"><strong>{escape(full_name or "Заявка без имени")}</strong><span>{escape(str(record.get("_id", "")))}</span></div>{highlights_html}<div class="meta">{"".join(rows)}{comment_block}</div></article>'
 
 
-def render_record_card(record: dict[str, Any], *, admin_mode: bool) -> str:
+def render_record_card(record: dict[str, Any], *, admin_mode: bool, lang: str = DEFAULT_LANGUAGE) -> str:
     publication_file = record.get("publication_file") or {}
     expert_opinion_file = record.get("expert_opinion_file") or {}
     publication_validation = record.get("publication_validation") or {}
     review_status = str(record.get("review_status") or REVIEW_STATUSES[0])
-    comment_text = str(record.get("admin_comment") or "").strip() or "Комментарий пока не добавлен."
-    validation_summary = validation_summary_text(publication_validation)
-    validation_errors = validation_errors_text(publication_validation)
+    comment_text = str(record.get("admin_comment") or "").strip() or text(lang, "comment_not_added")
+    validation_summary = validation_summary_text(publication_validation, lang=lang)
+    validation_errors = validation_errors_text(publication_validation, lang=lang)
     full_name = " ".join(
         part
         for part in [
@@ -630,59 +658,60 @@ def render_record_card(record: dict[str, Any], *, admin_mode: bool) -> str:
         if part
     )
     rows = [
-        meta_row("Фамилия", str(record.get("last_name", ""))),
-        meta_row("Имя", str(record.get("first_name", ""))),
-        meta_row("Отчество", optional_value(record.get("middle_name"))),
-        meta_row("Место учёбы", str(record.get("place_of_study", ""))),
-        meta_row("Кафедра", str(record.get("department", ""))),
-        meta_row("Место работы", optional_value(record.get("place_of_work"))),
-        meta_row("Должность", optional_value(record.get("job_title"))),
-        meta_row("Телефон для связи", str(record.get("phone", ""))),
-        meta_row("Электронная почта", str(record.get("email", ""))),
-        meta_row("Участие", str(record.get("participation", ""))),
-        meta_row("Секция", str(record.get("section", ""))),
-        meta_row("Название публикации", str(record.get("publication_title", ""))),
-        meta_row("ФИО Консультанта по иностранному языку", str(record.get("foreign_language_consultant", ""))),
-        meta_row("Файл публикации", file_name(publication_file)),
+        meta_row(field_label("last_name", lang=lang), str(record.get("last_name", ""))),
+        meta_row(field_label("first_name", lang=lang), str(record.get("first_name", ""))),
+        meta_row(field_label("middle_name", lang=lang), optional_value(record.get("middle_name"), lang=lang)),
+        meta_row(field_label("place_of_study", lang=lang), str(record.get("place_of_study", ""))),
+        meta_row(field_label("department", lang=lang), str(record.get("department", ""))),
+        meta_row(field_label("place_of_work", lang=lang), optional_value(record.get("place_of_work"), lang=lang)),
+        meta_row(field_label("job_title", lang=lang), optional_value(record.get("job_title"), lang=lang)),
+        meta_row(field_label("phone", lang=lang), str(record.get("phone", ""))),
+        meta_row(text(lang, "auth_email"), str(record.get("email", ""))),
+        meta_row(field_label("participation", lang=lang), participation_label(lang, str(record.get("participation", "")))),
+        meta_row(field_label("section", lang=lang), section_label(lang, str(record.get("section", "")))),
+        meta_row(field_label("publication_title", lang=lang), str(record.get("publication_title", ""))),
+        meta_row(field_label("foreign_language_consultant", lang=lang), str(record.get("foreign_language_consultant", ""))),
+        meta_row(field_label("publication_file", lang=lang), file_name(publication_file, lang=lang)),
         meta_row(
-            "Размер файла публикации",
-            f"{int(publication_file.get('size_bytes', 0))} байт" if publication_file.get("filename") else "Не указано",
+            text(lang, "publication_file_size"),
+            f"{int(publication_file.get('size_bytes', 0))} {text(lang, 'bytes_unit')}" if publication_file.get("filename") else text(lang, "not_specified"),
         ),
-        meta_row("Результат автопроверки файла", validation_summary),
-        meta_row("Замечания автопроверки", validation_errors),
-        meta_row("Экспертное заключение", file_name(expert_opinion_file)),
+        meta_row(text(lang, "validation_result_label"), validation_summary),
+        meta_row(text(lang, "validation_remarks_label"), validation_errors),
+        meta_row(field_label("expert_opinion_file", lang=lang), file_name(expert_opinion_file, lang=lang)),
         meta_row(
-            "Размер экспертного заключения",
-            f"{int(expert_opinion_file.get('size_bytes', 0))} байт" if expert_opinion_file.get("filename") else "Не указано",
+            text(lang, "expert_file_size"),
+            f"{int(expert_opinion_file.get('size_bytes', 0))} {text(lang, 'bytes_unit')}" if expert_opinion_file.get("filename") else text(lang, "not_specified"),
         ),
-        meta_row("Создано", format_dt(record.get("created_at"))),
+        meta_row(field_label("created_at", lang=lang), format_dt(record.get("created_at"), lang=lang)),
     ]
     if admin_mode:
-        rows.insert(0, meta_html_row("Статус", render_status_badge(review_status)))
-        rows.append(meta_row("Владелец аккаунта", str(record.get("owner_email", ""))))
-        comment_block = meta_row("Комментарий к заявке", comment_text)
+        rows.insert(0, meta_html_row(text(lang, "highlight_status"), render_status_badge(review_status, lang=lang)))
+        rows.append(meta_row(text(lang, "owner_account_email"), str(record.get("owner_email", ""))))
+        comment_block = meta_row(text(lang, "highlight_comment"), comment_text)
         highlights_html = ""
     else:
         comment_html = escape(comment_text).replace("\n", "<br>")
         highlights_html = (
             '<section class="record-highlights"><br>'
-            f'{render_highlight_block("Статус", render_status_badge(review_status, large=True))}'
-            f'{render_highlight_block("Автопроверка файла публикации", render_validation_details_html(publication_validation), extra_class="record-highlight-validation")}'
-            f'{render_highlight_block("Комментарий к заявке", comment_html, extra_class="record-highlight-comment")}'
+            f'{render_highlight_block(text(lang, "highlight_status"), render_status_badge(review_status, large=True, lang=lang))}'
+            f'{render_highlight_block(text(lang, "highlight_validation"), render_validation_details_html(publication_validation, lang=lang), extra_class="record-highlight-validation")}'
+            f'{render_highlight_block(text(lang, "highlight_comment"), comment_html, extra_class="record-highlight-comment")}'
             "</section>"
         )
         comment_block = ""
-    return f'<article class="card"><div class="card-title"><strong>{escape(full_name or "Заявка без имени")}</strong><span>{escape(str(record.get("_id", "")))}</span></div>{highlights_html}<div class="meta">{"".join(rows)}{comment_block}</div></article>'
+    return f'<article class="card"><div class="card-title"><strong>{escape(full_name or text(lang, "unnamed_record"))}</strong><span>{escape(str(record.get("_id", "")))}</span></div>{highlights_html}<div class="meta">{"".join(rows)}{comment_block}</div></article>'
 
 
 def render_admin_table(
     records: list[dict[str, Any]],
     *,
     selected_registration_id: str | None = None,
+    lang: str = DEFAULT_LANGUAGE,
 ) -> str:
     grouped: dict[str, list[dict[str, Any]]] = {}
     for record in records:
-        section = str(record.get("section") or "Без секции")
+        section = str(record.get("section") or text(lang, "without_section"))
         grouped.setdefault(section, []).append(record)
 
     ordered_sections = list(SECTION_OPTIONS)
@@ -710,62 +739,62 @@ def render_admin_table(
                     middle_name,
                 ]
                 if part
-            ) or "Без имени"
+            ) or text(lang, "unnamed_person")
             name_cell = "".join(
                 f"<div>{escape(part)}</div>"
                 for part in [last_name, first_name, middle_name]
                 if part
-            ) or "<div>Без имени</div>"
+            ) or f'<div>{escape(text(lang, "unnamed_person"))}</div>'
             publication_file = record.get("publication_file") or {}
             expert_opinion_file = record.get("expert_opinion_file") or {}
-            publication_name = file_name(publication_file)
-            expert_name = file_name(expert_opinion_file, empty="Не загружено")
+            publication_name = file_name(publication_file, lang=lang)
+            expert_name = file_name(expert_opinion_file, empty=text(lang, "not_uploaded"), lang=lang)
             review_status = str(record.get("review_status") or REVIEW_STATUSES[0])
             is_selected = bool(selected_registration_id and selected_registration_id == record_id)
             status_options = "".join(
-                f'<option value="{escape(status, quote=True)}"{" selected" if status == review_status else ""}>{escape(status)}</option>'
+                f'<option value="{escape(status, quote=True)}"{" selected" if status == review_status else ""}>{escape(review_status_label(lang, status))}</option>'
                 for status in REVIEW_STATUSES
             )
             download_links: list[str] = []
             if publication_file.get("filename"):
                 download_links.append(
-                    f'<a class="action-link" href="/englishconfernceregistartions2026/file/{record_id}/publication">Скачать публикацию</a>'
+                    f'<a class="action-link" href="/englishconfernceregistartions2026/file/{record_id}/publication">{escape(text(lang, "admin_download_publication"))}</a>'
                 )
             if expert_opinion_file.get("filename"):
                 download_links.append(
-                    f'<a class="action-link" href="/englishconfernceregistartions2026/file/{record_id}/expert-opinion">Скачать экспертное заключение</a>'
+                    f'<a class="action-link" href="/englishconfernceregistartions2026/file/{record_id}/expert-opinion">{escape(text(lang, "admin_download_expert"))}</a>'
                 )
             downloads_html = "".join(download_links)
             contacts_cell = (
                 f'<div class="file-stack"><div>{escape(str(record.get("email", "")))}</div>'
                 f'<div>{escape(str(record.get("phone", "")))}</div></div>'
             )
-            record_fields_html = render_object_fields(record)
+            record_fields_html = render_object_fields(record, lang=lang)
 
             rows_html.append(
                 f"""
                 <tr class="admin-row{" is-active" if is_selected else ""}" data-admin-target="admin-actions-{record_id}" tabindex="0" role="button" aria-selected="{"true" if is_selected else "false"}">
                   <td><div class="file-stack">{name_cell}</div></td>
                   <td>{contacts_cell}</td>
-                  <td>{escape(str(record.get("participation", "")))}</td>
+                  <td>{escape(participation_label(lang, str(record.get("participation", ""))))}</td>
                   <td>{escape(str(record.get("publication_title", "")))}</td>
-                  <td>{render_status_badge(review_status)}</td>
-                  <td>{escape(format_dt(record.get("created_at")))}</td>
+                  <td>{render_status_badge(review_status, lang=lang)}</td>
+                  <td>{escape(format_dt(record.get("created_at"), lang=lang))}</td>
                 </tr>
                 """
             )
             side_panels.append(
                 f"""
                 <section id="admin-actions-{record_id}" class="panel admin-side-card{" active" if is_selected else ""}" data-admin-card>
-                  <h2>{escape(full_name)}</h2>
-                  <p>Вы можете скачать файлы, изменить статус и оставить комментарий к заявке.</p>
+                  <h2>{escape(full_name or text(lang, "unnamed_person"))}</h2>
+                  <p>{escape(text(lang, "admin_tools_desc"))}</p>
                   <div class="meta">{record_fields_html}</div>
                   <div class="admin-tools">
                     {downloads_html}
                     <form method="post" action="/englishconfernceregistartions2026/comment/{record_id}">
-                      <label>Статус<select name="review_status">{status_options}</select></label>
-                      <label>Комментарий<textarea name="admin_comment">{escape(str(record.get("admin_comment") or ""))}</textarea></label>
-                      <button type="submit">Сохранить</button>
+                      <label>{escape(text(lang, "highlight_status"))}<select name="review_status">{status_options}</select></label>
+                      <label>{escape(text(lang, "highlight_comment"))}<textarea name="admin_comment">{escape(str(record.get("admin_comment") or ""))}</textarea></label>
+                      <button type="submit">{escape(text(lang, "admin_save"))}</button>
                     </form>
                   </div>
                 </section>
@@ -775,17 +804,17 @@ def render_admin_table(
         sections_html.append(
             f"""
             <details class="section-group" open>
-              <summary class="section-summary">{escape(section)} <span class="section-meta">({len(section_records)} заявок)</span></summary>
+              <summary class="section-summary">{escape(section_label(lang, section))} <span class="section-meta">{escape(text(lang, "section_count", count=len(section_records)))}</span></summary>
               <div class="table-wrap">
                 <table class="records-table">
                   <thead>
                     <tr>
-                      <th>Участник</th>
-                      <th>Контакты</th>
-                      <th>Участие</th>
-                      <th>Публикация</th>
-                      <th>Статус</th>
-                      <th>Создано</th>
+                      <th>{escape(text(lang, "admin_table_participant"))}</th>
+                      <th>{escape(text(lang, "admin_table_contacts"))}</th>
+                      <th>{escape(text(lang, "admin_table_participation"))}</th>
+                      <th>{escape(text(lang, "admin_table_publication"))}</th>
+                      <th>{escape(text(lang, "admin_table_status"))}</th>
+                      <th>{escape(text(lang, "admin_table_created_at"))}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -799,8 +828,8 @@ def render_admin_table(
 
     side_placeholder = (
         '<div class="panel admin-side-placeholder" data-admin-placeholder>'
-        "<h2>Действия по заявке</h2>"
-        "<p>Нажмите на строку в таблице, чтобы открыть инструменты для выбранной заявки.</p>"
+        f"<h2>{escape(text(lang, 'admin_side_empty_title'))}</h2>"
+        f"<p>{escape(text(lang, 'admin_side_empty_desc'))}</p>"
         "</div>"
     )
     return f"""
@@ -879,23 +908,25 @@ def render_records_page(
     empty_text: str,
     empty_action_html: str = "",
     selected_registration_id: str | None = None,
+    lang: str = DEFAULT_LANGUAGE,
 ) -> HTMLResponse:
     if records:
         if admin_mode:
-            body = render_admin_table(records, selected_registration_id=selected_registration_id)
+            body = render_admin_table(records, selected_registration_id=selected_registration_id, lang=lang)
         else:
-            body = f'<section class="cards">{"".join(render_record_card(record, admin_mode=admin_mode) for record in records)}</section>'
+            body = f'<section class="cards">{"".join(render_record_card(record, admin_mode=admin_mode, lang=lang) for record in records)}</section>'
     else:
         body = f'<div class="empty">{escape(empty_text)}{empty_action_html}</div>'
-    return layout(title, body, current_user=current_user, success=success)
+    return layout(title, body, current_user=current_user, success=success, lang=lang)
 
 
-def render_forbidden(current_user: dict[str, Any]) -> HTMLResponse:
+def render_forbidden(current_user: dict[str, Any], *, lang: str = DEFAULT_LANGUAGE) -> HTMLResponse:
     response = layout(
-        "Доступ запрещён",
-        '<div class="empty">Для просмотра этой страницы нужны права администратора.</div>',
+        text(lang, "forbidden_title"),
+        f'<div class="empty">{escape(text(lang, "forbidden_body"))}</div>',
         current_user=current_user,
-        error="Недостаточно прав доступа.",
+        error=text(lang, "forbidden_error"),
+        lang=lang,
     )
     response.status_code = 403
     return response

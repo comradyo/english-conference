@@ -8,7 +8,8 @@ from fastapi.responses import RedirectResponse
 from pydantic import ValidationError
 
 from config import Settings
-from models import MAX_FILE_SIZE_BYTES
+from i18n import DEFAULT_LANGUAGE, LANGUAGE_COOKIE_NAME, resolve_language, text
+from models import MAX_FILE_SIZE_BYTES, REVIEW_STATUSES
 
 
 def now_utc() -> datetime:
@@ -23,13 +24,38 @@ def is_admin_email(settings: Settings, email: str) -> bool:
     return normalize_email(email) in settings.admin_emails
 
 
-def validation_message(exc: ValidationError, fallback: str) -> str:
+def request_language(request: Request) -> str:
+    query_value = request.query_params.get("lang")
+    if query_value:
+        return resolve_language(query_value)
+    return resolve_language(request.cookies.get(LANGUAGE_COOKIE_NAME))
+
+
+def apply_language_cookie(response: Response, lang: str) -> None:
+    response.set_cookie(
+        key=LANGUAGE_COOKIE_NAME,
+        value=resolve_language(lang),
+        httponly=False,
+        samesite="lax",
+        secure=False,
+        max_age=365 * 24 * 3600,
+        path="/",
+    )
+
+
+def localized_redirect(request: Request, url: str, status_code: int = 303) -> RedirectResponse:
+    response = RedirectResponse(url=url, status_code=status_code)
+    apply_language_cookie(response, request_language(request))
+    return response
+
+
+def validation_message(exc: ValidationError, fallback: str, *, lang: str = DEFAULT_LANGUAGE) -> str:
     first_error = exc.errors()[0]
     field_name = ".".join(str(part) for part in first_error.get("loc", []))
     if "email" in field_name:
-        return "Введите корректный адрес электронной почты."
+        return text(lang, "invalid_email")
     if "password" in field_name:
-        return "Пароль должен содержать не менее 8 символов."
+        return text(lang, "password_too_short")
     return fallback
 
 
@@ -37,19 +63,20 @@ def validate_docx(
     upload: UploadFile | None,
     *,
     required: bool = True,
-    field_label: str = "Файл",
+    field_label: str = "File",
+    lang: str = DEFAULT_LANGUAGE,
 ) -> bool:
     if upload is None:
         if required:
-            raise HTTPException(status_code=400, detail=f"{field_label}: файл обязателен.")
+            raise HTTPException(status_code=400, detail=text(lang, "docx_file_required", field=field_label))
         return False
     filename = (upload.filename or "").strip()
     if not filename:
         if required:
-            raise HTTPException(status_code=400, detail=f"{field_label}: файл обязателен.")
+            raise HTTPException(status_code=400, detail=text(lang, "docx_file_required", field=field_label))
         return False
     if not filename.lower().endswith(".docx"):
-        raise HTTPException(status_code=400, detail=f"{field_label}: можно загрузить только файл в формате .docx.")
+        raise HTTPException(status_code=400, detail=text(lang, "docx_only", field=field_label))
     return True
 
 
@@ -57,17 +84,18 @@ async def read_docx(
     upload: UploadFile | None,
     *,
     required: bool = True,
-    field_label: str = "Файл",
+    field_label: str = "File",
+    lang: str = DEFAULT_LANGUAGE,
 ) -> bytes | None:
-    if not validate_docx(upload, required=required, field_label=field_label):
+    if not validate_docx(upload, required=required, field_label=field_label, lang=lang):
         return None
     content = await upload.read()
     if not content:
-        raise HTTPException(status_code=400, detail=f"{field_label}: загруженный файл пуст.")
+        raise HTTPException(status_code=400, detail=text(lang, "docx_empty", field=field_label))
     if len(content) > MAX_FILE_SIZE_BYTES:
         raise HTTPException(
             status_code=400,
-            detail=f"{field_label}: размер файла превышает допустимые {MAX_FILE_SIZE_BYTES} байт.",
+            detail=text(lang, "docx_too_large", field=field_label, size=MAX_FILE_SIZE_BYTES),
         )
     return content
 
@@ -145,7 +173,7 @@ async def load_current_user(request: Request) -> dict[str, Any] | None:
 async def require_user(request: Request):
     user = await load_current_user(request)
     if user is None:
-        return None, RedirectResponse(url="/?notice=login_required", status_code=303)
+        return None, localized_redirect(request, "/?notice=login_required", status_code=303)
     return user, None
 
 
@@ -174,12 +202,13 @@ def build_password_reset_email_task(
     recipient_email: str,
     reset_url: str,
     expires_at: datetime,
+    lang: str = DEFAULT_LANGUAGE,
 ) -> dict[str, Any]:
     normalized_email = normalize_email(recipient_email)
     if "@" not in normalized_email:
-        raise RuntimeError("Нельзя отправить письмо: указан некорректный email для сброса пароля.")
+        raise RuntimeError(text(lang, "password_reset_email_invalid_recipient"))
     if not reset_url.strip():
-        raise RuntimeError("Нельзя отправить письмо: отсутствует ссылка для сброса пароля.")
+        raise RuntimeError(text(lang, "password_reset_email_missing_link"))
 
     queued_at = now_utc()
     return {
@@ -201,8 +230,8 @@ def build_password_reset_email_task(
 def build_initial_publication_validation() -> dict[str, Any]:
     queued_at = now_utc()
     return {
-        "status": "Ожидает проверки",
-        "summary": "Файл публикации ожидает автоматической проверки.",
+        "status": text(DEFAULT_LANGUAGE, "checker_pending_status"),
+        "summary": text(DEFAULT_LANGUAGE, "checker_pending_summary"),
         "errors": [],
         "checked_at": None,
         "started_at": None,
@@ -211,18 +240,18 @@ def build_initial_publication_validation() -> dict[str, Any]:
     }
 
 
-def build_registration_update_email_task(record: dict[str, Any]) -> dict[str, Any]:
+def build_registration_update_email_task(record: dict[str, Any], *, lang: str = DEFAULT_LANGUAGE) -> dict[str, Any]:
     recipient = normalize_email(str(record.get("email") or ""))
     if "@" not in recipient:
-        raise RuntimeError("В заявке не указан корректный адрес электронной почты для уведомления.")
+        raise RuntimeError(text(lang, "registration_email_invalid_recipient"))
 
     last_name = str(record.get("last_name") or "").strip()
     first_name = str(record.get("first_name") or "").strip()
     middle_name = str(record.get("middle_name") or "").strip()
-    full_name = " ".join(part for part in [last_name, first_name, middle_name] if part) or "Участник"
-    publication_title = str(record.get("publication_title") or "").strip() or "Без названия"
-    review_status = str(record.get("review_status") or "").strip() or "На рассмотрении"
-    admin_comment = str(record.get("admin_comment") or "").strip() or "Комментарий не указан."
+    full_name = " ".join(part for part in [last_name, first_name, middle_name] if part) or text(DEFAULT_LANGUAGE, "participant_fallback")
+    publication_title = str(record.get("publication_title") or "").strip() or text(DEFAULT_LANGUAGE, "untitled_publication")
+    review_status = str(record.get("review_status") or "").strip() or REVIEW_STATUSES[0]
+    admin_comment = str(record.get("admin_comment") or "").strip() or text(DEFAULT_LANGUAGE, "comment_not_specified")
     queued_at = now_utc()
 
     return {
