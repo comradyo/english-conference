@@ -96,6 +96,17 @@ def format_dt(value: Any) -> str:
     return "Не указано"
 
 
+def optional_value(value: Any, *, empty: str = "Не указано") -> str:
+    text = str(value or "").strip()
+    return text or empty
+
+
+def file_name(file_info: dict[str, Any] | None, *, empty: str = "Не загружен") -> str:
+    if not isinstance(file_info, dict):
+        return empty
+    return optional_value(file_info.get("filename"), empty=empty)
+
+
 def render_auth_page(*, error: str | None = None, success: str | None = None, register_values: dict[str, str] | None = None, login_values: dict[str, str] | None = None) -> HTMLResponse:
     register_values = register_values or {}
     login_values = login_values or {}
@@ -155,26 +166,6 @@ def render_auth_page(*, error: str | None = None, success: str | None = None, re
     </script>
     """
     return layout("Личный кабинет конференции", body, success=success, error=error)
-    body = f"""
-    <section class="split">
-      <section class="panel"><h2>Регистрация</h2><p>Создайте личный кабинет. Повторно зарегистрировать тот же email нельзя.</p>
-        <form method="post" action="/register-account">
-          <label>Адрес электронной почты<input type="email" name="email" required value="{field_value(register_values, 'email')}"></label>
-          <label>Пароль<input type="password" name="password" required minlength="8"></label>
-          <label>Повторите пароль<input type="password" name="password_repeat" required minlength="8"></label>
-          <button type="submit">Создать аккаунт</button>
-        </form>
-      </section>
-      <section class="panel"><h2>Вход в личный кабинет</h2><p>Введите email и пароль, чтобы открыть форму регистрации и список своих заявок.</p>
-        <form method="post" action="/login">
-          <label>Адрес электронной почты<input type="email" name="email" required value="{field_value(login_values, 'email')}"></label>
-          <label>Пароль<input type="password" name="password" required></label>
-          <button type="submit">Войти</button>
-        </form>
-      </section>
-    </section>
-    """
-    return layout("Личный кабинет конференции", body, success=success, error=error)
 
 
 def render_conference_form(current_user: dict[str, Any], *, error: str | None = None, success: str | None = None, values: dict[str, str] | None = None) -> HTMLResponse:
@@ -188,15 +179,19 @@ def render_conference_form(current_user: dict[str, Any], *, error: str | None = 
         <div class="grid">
           <label>Фамилия<input type="text" name="last_name" required value="{field_value(values, 'last_name')}"></label>
           <label>Имя<input type="text" name="first_name" required value="{field_value(values, 'first_name')}"></label>
-          <label>Место учебы<input type="text" name="place_of_study" required value="{field_value(values, 'place_of_study')}"></label>
+          <label>Отчество<input type="text" name="middle_name" value="{field_value(values, 'middle_name')}"></label>
+          <label>Место учёбы<input type="text" name="place_of_study" required value="{field_value(values, 'place_of_study')}"></label>
           <label>Кафедра<input type="text" name="department" required value="{field_value(values, 'department')}"></label>
+          <label>Место работы<input type="text" name="place_of_work" value="{field_value(values, 'place_of_work')}"></label>
+          <label>Должность<input type="text" name="job_title" value="{field_value(values, 'job_title')}"></label>
           <label>Телефон для связи<input type="tel" name="phone" required value="{field_value(values, 'phone')}"></label>
           <label>Электронная почта<input type="email" name="email" required value="{field_value(values, 'email')}"></label>
           <label>Участие{render_select('participation', PARTICIPATION_OPTIONS, values.get('participation'))}</label>
           <label>Секция{render_select('section', SECTION_OPTIONS, values.get('section'))}</label>
           <label>Название публикации<input type="text" name="publication_title" required value="{field_value(values, 'publication_title')}"></label>
-          <label>Консультант по языку<input type="text" name="language_consultant" required value="{field_value(values, 'language_consultant')}"></label>
+          <label>ФИО Консультанта по иностранному языку<input type="text" name="foreign_language_consultant" required value="{field_value(values, 'foreign_language_consultant')}"></label>
           <label>Файл публикации<input type="file" name="publication_file" accept=".docx" required></label>
+          <label>Экспертное заключение<input type="file" name="expert_opinion_file" accept=".docx"></label>
         </div>
         <button type="submit">Сохранить заявку</button>
       </form>
@@ -206,45 +201,50 @@ def render_conference_form(current_user: dict[str, Any], *, error: str | None = 
 
 
 def render_record_card(record: dict[str, Any], *, admin_mode: bool) -> str:
-    file_info = record.get("file", {})
-    file_name = str(file_info.get("filename", ""))
+    publication_file = record.get("publication_file") or {}
+    expert_opinion_file = record.get("expert_opinion_file") or {}
     review_status = str(record.get("review_status") or REVIEW_STATUSES[0])
+    full_name = " ".join(
+        part
+        for part in [
+            str(record.get("last_name", "")).strip(),
+            str(record.get("first_name", "")).strip(),
+            str(record.get("middle_name", "")).strip(),
+        ]
+        if part
+    )
     rows = [
         meta_row("Фамилия", str(record.get("last_name", ""))),
         meta_row("Имя", str(record.get("first_name", ""))),
-        meta_row("Место учебы", str(record.get("place_of_study", ""))),
+        meta_row("Отчество", optional_value(record.get("middle_name"))),
+        meta_row("Место учёбы", str(record.get("place_of_study", ""))),
         meta_row("Кафедра", str(record.get("department", ""))),
+        meta_row("Место работы", optional_value(record.get("place_of_work"))),
+        meta_row("Должность", optional_value(record.get("job_title"))),
         meta_row("Телефон для связи", str(record.get("phone", ""))),
         meta_row("Электронная почта", str(record.get("email", ""))),
         meta_row("Участие", str(record.get("participation", ""))),
         meta_row("Секция", str(record.get("section", ""))),
         meta_row("Название публикации", str(record.get("publication_title", ""))),
-        meta_row("Консультант по языку", str(record.get("language_consultant", ""))),
-        meta_row("Файл публикации", str(file_info.get("filename", "Нет файла"))),
-        meta_row("Размер файла", f"{int(file_info.get('size_bytes', 0))} байт"),
+        meta_row("ФИО Консультанта по иностранному языку", str(record.get("foreign_language_consultant", ""))),
+        meta_row("Файл публикации", file_name(publication_file)),
+        meta_row(
+            "Размер файла публикации",
+            f"{int(publication_file.get('size_bytes', 0))} байт" if publication_file.get("filename") else "Не указано",
+        ),
+        meta_row("Экспертное заключение", file_name(expert_opinion_file)),
+        meta_row(
+            "Размер экспертного заключения",
+            f"{int(expert_opinion_file.get('size_bytes', 0))} байт" if expert_opinion_file.get("filename") else "Не указано",
+        ),
         meta_row("Создано", format_dt(record.get("created_at"))),
+        meta_row("Статус", review_status),
     ]
-    rows.append(meta_row("Статус", review_status))
-    rows[10] = meta_row(
-        "\u0424\u0430\u0439\u043b \u043f\u0443\u0431\u043b\u0438\u043a\u0430\u0446\u0438\u0438",
-        file_name or "\u041d\u0435\u0442 \u0444\u0430\u0439\u043b\u0430",
-    )
     if admin_mode:
         rows.append(meta_row("Владелец аккаунта", str(record.get("owner_email", ""))))
-        comment_value = str(record.get("admin_comment") or "")
-        download_link = ""
-        if file_name:
-            download_link = (
-                f'<a class="action-link" href="/englishconfernceregistartions2026/file/{record["_id"]}">'
-                "\u0421\u043a\u0430\u0447\u0430\u0442\u044c \u0444\u0430\u0439\u043b"
-                "</a>"
-            )
-        comment_block = f'<form method="post" action="/englishconfernceregistartions2026/comment/{record["_id"]}"><label>Комментарий администратора<textarea name="admin_comment">{escape(comment_value)}</textarea></label><button type="submit">Сохранить комментарий</button></form>'
-        comment_block = f"{download_link}{comment_block}"
-    else:
-        comment_text = str(record.get("admin_comment") or "").strip() or "Комментарий пока не добавлен."
-        comment_block = meta_row("Комментарий администратора", comment_text)
-    return f'<article class="card"><div class="card-title"><strong>{escape(str(record.get("last_name", "")))} {escape(str(record.get("first_name", "")))}</strong><span>{escape(str(record.get("_id", "")))}</span></div><div class="meta">{"".join(rows)}{comment_block}</div></article>'
+    comment_text = str(record.get("admin_comment") or "").strip() or "Комментарий пока не добавлен."
+    comment_block = meta_row("Комментарий к заявке", comment_text)
+    return f'<article class="card"><div class="card-title"><strong>{escape(full_name or "Заявка без имени")}</strong><span>{escape(str(record.get("_id", "")))}</span></div><div class="meta">{"".join(rows)}{comment_block}</div></article>'
 
 
 def render_admin_table(
@@ -271,43 +271,83 @@ def render_admin_table(
         rows_html: list[str] = []
         for record in section_records:
             record_id = str(record.get("_id", ""))
-            file_info = record.get("file", {})
-            file_name = str(file_info.get("filename", "")) or "Нет файла"
+            full_name = " ".join(
+                part
+                for part in [
+                    str(record.get("last_name", "")).strip(),
+                    str(record.get("first_name", "")).strip(),
+                    str(record.get("middle_name", "")).strip(),
+                ]
+                if part
+            ) or "Без имени"
+            publication_file = record.get("publication_file") or {}
+            expert_opinion_file = record.get("expert_opinion_file") or {}
+            publication_name = file_name(publication_file)
+            expert_name = file_name(expert_opinion_file, empty="Не загружено")
             review_status = str(record.get("review_status") or REVIEW_STATUSES[0])
             is_selected = bool(selected_registration_id and selected_registration_id == record_id)
             status_options = "".join(
                 f'<option value="{escape(status, quote=True)}"{" selected" if status == review_status else ""}>{escape(status)}</option>'
                 for status in REVIEW_STATUSES
             )
-            download_html = ""
-            if file_info.get("filename"):
-                download_html = f'<a class="action-link" href="/englishconfernceregistartions2026/file/{record_id}">Скачать файл</a>'
+            download_links: list[str] = []
+            if publication_file.get("filename"):
+                download_links.append(
+                    f'<a class="action-link" href="/englishconfernceregistartions2026/file/{record_id}/publication">Скачать публикацию</a>'
+                )
+            if expert_opinion_file.get("filename"):
+                download_links.append(
+                    f'<a class="action-link" href="/englishconfernceregistartions2026/file/{record_id}/expert-opinion">Скачать экспертное заключение</a>'
+                )
+            downloads_html = "".join(download_links)
+            files_cell = (
+                f'<div class="file-stack"><div><strong>Публикация:</strong> {escape(publication_name)}</div>'
+                f'<div><strong>Экспертное:</strong> {escape(expert_name)}</div></div>'
+            )
+            contacts_cell = (
+                f'<div class="file-stack"><div>{escape(str(record.get("email", "")))}</div>'
+                f'<div>{escape(str(record.get("phone", "")))}</div></div>'
+            )
 
             rows_html.append(
                 f"""
                 <tr class="admin-row{" is-active" if is_selected else ""}" data-admin-target="admin-actions-{record_id}" tabindex="0" role="button" aria-selected="{"true" if is_selected else "false"}">
-                  <td>{escape(str(record.get("last_name", "")))} {escape(str(record.get("first_name", "")))}</td>
-                  <td>{escape(str(record.get("owner_email", "")))}</td>
+                  <td>{escape(full_name)}</td>
+                  <td>{contacts_cell}</td>
                   <td>{escape(str(record.get("participation", "")))}</td>
                   <td>{escape(str(record.get("publication_title", "")))}</td>
-                  <td>{escape(file_name)}</td>
+                  <td>{files_cell}</td>
                   <td><span class="status-pill">{escape(review_status)}</span></td>
                   <td>{escape(format_dt(record.get("created_at")))}</td>
+                  <td><span class="row-action-hint">Открыть справа</span></td>
                 </tr>
                 """
             )
             side_panels.append(
                 f"""
                 <section id="admin-actions-{record_id}" class="panel admin-side-card{" active" if is_selected else ""}" data-admin-card>
-                  <h2>{escape(str(record.get("last_name", "")))} {escape(str(record.get("first_name", "")))}</h2>
-                  <p>Заявка пользователя {escape(str(record.get("owner_email", "")))}. Вы можете скачать файл, изменить статус и оставить комментарий.</p>
+                  <h2>{escape(full_name)}</h2>
+                  <p>Вы можете скачать файлы, изменить статус и оставить комментарий к заявке.</p>
                   <div class="meta">
+                    {meta_row("Аккаунт", str(record.get("owner_email", "")))}
+                    {meta_row("Контактный email", str(record.get("email", "")))}
+                    {meta_row("Телефон", str(record.get("phone", "")))}
+                    {meta_row("Отчество", optional_value(record.get("middle_name")))}
+                    {meta_row("Место учёбы", str(record.get("place_of_study", "")))}
+                    {meta_row("Кафедра", str(record.get("department", "")))}
+                    {meta_row("Место работы", optional_value(record.get("place_of_work")))}
+                    {meta_row("Должность", optional_value(record.get("job_title")))}
+                    {meta_row("Участие", str(record.get("participation", "")))}
                     {meta_row("Секция", str(record.get("section", "")))}
-                    {meta_row("Тема публикации", str(record.get("publication_title", "")))}
+                    {meta_row("Название публикации", str(record.get("publication_title", "")))}
+                    {meta_row("ФИО Консультанта по иностранному языку", str(record.get("foreign_language_consultant", "")))}
+                    {meta_row("Файл публикации", publication_name)}
+                    {meta_row("Экспертное заключение", expert_name)}
                     {meta_row("Текущий статус", review_status)}
+                    {meta_row("Создано", format_dt(record.get("created_at")))}
                   </div>
                   <div class="admin-tools">
-                    {download_html}
+                    {downloads_html}
                     <form method="post" action="/englishconfernceregistartions2026/comment/{record_id}">
                       <label>Статус<select name="review_status">{status_options}</select></label>
                       <label>Комментарий<textarea name="admin_comment">{escape(str(record.get("admin_comment") or ""))}</textarea></label>
@@ -327,12 +367,13 @@ def render_admin_table(
                   <thead>
                     <tr>
                       <th>Участник</th>
-                      <th>Аккаунт</th>
+                      <th>Контакты</th>
                       <th>Участие</th>
                       <th>Публикация</th>
-                      <th>Файл</th>
+                      <th>Файлы</th>
                       <th>Статус</th>
                       <th>Создано</th>
+                      <th>Действия</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -362,6 +403,7 @@ def render_admin_table(
     .admin-side-card.active {{ display:grid; }}
     .admin-side-placeholder[hidden] {{ display:none; }}
     .row-action-hint {{ color:var(--accent); font-weight:700; white-space:nowrap; }}
+    .file-stack {{ display:grid; gap:6px; }}
     @media (max-width:980px) {{ .admin-layout {{ grid-template-columns:1fr; }} .admin-side-pane {{ position:static; }} }}
     </style>
     <section class="admin-layout">

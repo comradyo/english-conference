@@ -33,23 +33,41 @@ def validation_message(exc: ValidationError, fallback: str) -> str:
     return fallback
 
 
-def validate_docx(upload: UploadFile) -> None:
+def validate_docx(
+    upload: UploadFile | None,
+    *,
+    required: bool = True,
+    field_label: str = "Файл",
+) -> bool:
+    if upload is None:
+        if required:
+            raise HTTPException(status_code=400, detail=f"{field_label}: файл обязателен.")
+        return False
     filename = (upload.filename or "").strip()
     if not filename:
-        raise HTTPException(status_code=400, detail="Файл публикации обязателен.")
+        if required:
+            raise HTTPException(status_code=400, detail=f"{field_label}: файл обязателен.")
+        return False
     if not filename.lower().endswith(".docx"):
-        raise HTTPException(status_code=400, detail="Можно загрузить только файл в формате .docx.")
+        raise HTTPException(status_code=400, detail=f"{field_label}: можно загрузить только файл в формате .docx.")
+    return True
 
 
-async def read_docx(upload: UploadFile) -> bytes:
-    validate_docx(upload)
+async def read_docx(
+    upload: UploadFile | None,
+    *,
+    required: bool = True,
+    field_label: str = "Файл",
+) -> bytes | None:
+    if not validate_docx(upload, required=required, field_label=field_label):
+        return None
     content = await upload.read()
     if not content:
-        raise HTTPException(status_code=400, detail="Загруженный файл пуст.")
+        raise HTTPException(status_code=400, detail=f"{field_label}: загруженный файл пуст.")
     if len(content) > MAX_FILE_SIZE_BYTES:
         raise HTTPException(
             status_code=400,
-            detail=f"Размер файла превышает допустимые {MAX_FILE_SIZE_BYTES} байт.",
+            detail=f"{field_label}: размер файла превышает допустимые {MAX_FILE_SIZE_BYTES} байт.",
         )
     return content
 

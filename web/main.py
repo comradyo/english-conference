@@ -38,6 +38,25 @@ from state import lifespan
 app = FastAPI(title="Conference Personal Cabinet", lifespan=lifespan)
 
 
+def optional_form_value(value: str) -> str | None:
+    stripped = value.strip()
+    return stripped or None
+
+
+def file_document(upload: UploadFile | None, content: bytes | None) -> dict[str, object] | None:
+    if upload is None or content is None:
+        return None
+    filename = (upload.filename or "").strip()
+    if not filename:
+        return None
+    return {
+        "filename": filename,
+        "content_type": upload.content_type or "application/octet-stream",
+        "size_bytes": len(content),
+        "data": Binary(content),
+    }
+
+
 @app.get("/", include_in_schema=False)
 async def auth_page(request: Request):
     current_user = await load_current_user(request)
@@ -157,47 +176,65 @@ async def submit_conference_registration(
     request: Request,
     last_name: str = Form(...),
     first_name: str = Form(...),
+    middle_name: str = Form(""),
     place_of_study: str = Form(...),
     department: str = Form(...),
+    place_of_work: str = Form(""),
+    job_title: str = Form(""),
     phone: str = Form(...),
     email: str = Form(...),
     participation: str = Form(...),
     section: str = Form(...),
     publication_title: str = Form(...),
-    language_consultant: str = Form(...),
+    foreign_language_consultant: str = Form(...),
     publication_file: UploadFile = File(...),
+    expert_opinion_file: UploadFile | None = File(None),
 ):
     current_user, response = await require_user(request)
     if response:
         return response
 
+    middle_name_value = optional_form_value(middle_name)
+    place_of_work_value = optional_form_value(place_of_work)
+    job_title_value = optional_form_value(job_title)
     form_values = {
         "last_name": last_name,
         "first_name": first_name,
+        "middle_name": middle_name,
         "place_of_study": place_of_study,
         "department": department,
+        "place_of_work": place_of_work,
+        "job_title": job_title,
         "phone": phone,
         "email": email,
         "participation": participation,
         "section": section,
         "publication_title": publication_title,
-        "language_consultant": language_consultant,
+        "foreign_language_consultant": foreign_language_consultant,
     }
 
     try:
         payload = ConferenceRegistrationPayload(
             last_name=last_name,
             first_name=first_name,
+            middle_name=middle_name_value,
             place_of_study=place_of_study,
             department=department,
+            place_of_work=place_of_work_value,
+            job_title=job_title_value,
             phone=phone,
             email=normalize_email(email),
             participation=participation,
             section=section,
             publication_title=publication_title,
-            language_consultant=language_consultant,
+            foreign_language_consultant=foreign_language_consultant,
         )
-        file_content = await read_docx(publication_file)
+        publication_file_content = await read_docx(publication_file, field_label="Файл публикации")
+        expert_opinion_content = await read_docx(
+            expert_opinion_file,
+            required=False,
+            field_label="Экспертное заключение",
+        )
     except ValidationError as exc:
         result = render_conference_form(
             current_user,
@@ -211,26 +248,28 @@ async def submit_conference_registration(
         result.status_code = exc.status_code
         return result
 
+    if publication_file_content is None:
+        raise HTTPException(status_code=500, detail="Не удалось прочитать файл публикации.")
+
     await request.app.state.registrations_collection.insert_one(
         {
             "owner_user_id": current_user["_id"],
             "owner_email": current_user["email"],
             "last_name": payload.last_name,
             "first_name": payload.first_name,
+            "middle_name": payload.middle_name,
             "place_of_study": payload.place_of_study,
             "department": payload.department,
+            "place_of_work": payload.place_of_work,
+            "job_title": payload.job_title,
             "phone": payload.phone,
             "email": normalize_email(str(payload.email)),
             "participation": payload.participation,
             "section": payload.section,
             "publication_title": payload.publication_title,
-            "language_consultant": payload.language_consultant,
-            "file": {
-                "filename": publication_file.filename,
-                "content_type": publication_file.content_type or "application/octet-stream",
-                "size_bytes": len(file_content),
-                "data": Binary(file_content),
-            },
+            "foreign_language_consultant": payload.foreign_language_consultant,
+            "publication_file": file_document(publication_file, publication_file_content),
+            "expert_opinion_file": file_document(expert_opinion_file, expert_opinion_content),
             "review_status": REVIEW_STATUSES[0],
             "admin_comment": "",
             "created_at": now_utc(),
@@ -239,7 +278,7 @@ async def submit_conference_registration(
 
     result = render_conference_form(
         current_user,
-        success="Заявка сохранена в MongoDB.",
+        success="Заявка сохранена.",
         values={"email": current_user["email"]},
     )
     result.status_code = 201
@@ -254,7 +293,7 @@ async def my_registrations(request: Request):
 
     records = await request.app.state.registrations_collection.find(
         {"owner_user_id": current_user["_id"]},
-        {"file.data": 0},
+        {"publication_file.data": 0, "expert_opinion_file.data": 0},
     ).sort("created_at", -1).to_list(length=200)
 
     return render_records_page(
@@ -276,7 +315,7 @@ async def admin_registrations(request: Request):
 
     records = await request.app.state.registrations_collection.find(
         {},
-        {"file.data": 0},
+        {"publication_file.data": 0, "expert_opinion_file.data": 0},
     ).sort("created_at", -1).to_list(length=500)
     return render_records_page(
         "Все заявки пользователей",
@@ -289,14 +328,31 @@ async def admin_registrations(request: Request):
     )
 
 
-@app.get("/englishconfernceregistartions2026/file/{registration_id}", include_in_schema=False)
+@app.get("/englishconfernceregistartions2026/file/{registration_id}/{file_kind}", include_in_schema=False)
 async def download_admin_file(
     registration_id: str,
+    file_kind: str,
     request: Request,
 ):
     current_user, response = await require_admin(request, render_forbidden)
     if response:
         return response
+
+    file_map = {
+        "publication": ("publication_file", "Файл публикации", "publication.docx"),
+        "expert-opinion": ("expert_opinion_file", "Экспертное заключение", "expert-opinion.docx"),
+    }
+    selected_file = file_map.get(file_kind)
+    if selected_file is None:
+        result = layout(
+            "Ошибка",
+            '<div class="empty">Запрошенный тип файла не поддерживается.</div>',
+            current_user=current_user,
+            error="Некорректный тип файла.",
+        )
+        result.status_code = 404
+        return result
+    file_field, file_label, default_filename = selected_file
 
     object_id = parse_object_id(registration_id)
     if object_id is None:
@@ -311,7 +367,7 @@ async def download_admin_file(
 
     record = await request.app.state.registrations_collection.find_one(
         {"_id": object_id},
-        {"file": 1},
+        {file_field: 1},
     )
     if not record:
         result = layout(
@@ -323,11 +379,20 @@ async def download_admin_file(
         result.status_code = 404
         return result
 
-    file_info = record.get("file") or {}
+    file_info = record.get(file_field) or {}
     file_data = file_info.get("data")
-    file_name = str(file_info.get("filename") or "publication.docx")
+    file_name = str(file_info.get("filename") or default_filename)
     content_type = str(file_info.get("content_type") or "application/octet-stream")
     if not file_data:
+        result = layout(
+            "Ошибка",
+            f'<div class="empty">{file_label} для этой заявки не найден.</div>',
+            current_user=current_user,
+            error=f"{file_label} не найден.",
+        )
+        result.status_code = 404
+        return result
+    if False and not file_data:
         result = layout(
             "РћС€РёР±РєР°",
             '<div class="empty">Р¤Р°Р№Р» РґР»СЏ СЌС‚РѕР№ Р·Р°СЏРІРєРё РЅРµ РЅР°Р№РґРµРЅ.</div>',
