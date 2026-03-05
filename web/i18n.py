@@ -322,14 +322,14 @@ FIELD_LABELS: dict[str, dict[str, str]] = {
 }
 
 PARTICIPATION_LABELS = {
-    PARTICIPATION_OPTIONS[0]: {"ru": PARTICIPATION_OPTIONS[0], "en": "Presentation with slides"},
+    PARTICIPATION_OPTIONS[0]: {"ru": PARTICIPATION_OPTIONS[0], "en": "Oral presentation"},
     PARTICIPATION_OPTIONS[1]: {
         "ru": PARTICIPATION_OPTIONS[1],
-        "en": "Online presentation (for participants from other cities)",
+        "en": "Online presentation (for non-residents only)",
     },
     PARTICIPATION_OPTIONS[2]: {
         "ru": PARTICIPATION_OPTIONS[2],
-        "en": "Publication in proceedings (without presentation)",
+        "en": "Publication only",
     },
     PARTICIPATION_OPTIONS[3]: {"ru": PARTICIPATION_OPTIONS[3], "en": "Guest"},
 }
