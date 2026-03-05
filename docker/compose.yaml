@@ -124,6 +124,24 @@ services:
     environment:
       LOG_LEVEL: ${LOG_LEVEL:-info}
 
+  mongo-backup:
+    image: ${COMPOSE_PROJECT_NAME}-mongo-backup:${API_IMAGE_TAG:-latest}
+    build:
+      context: ..
+      dockerfile: docker/backup.Dockerfile
+    restart: unless-stopped
+    environment:
+      MONGO_URI: ${MONGO_URI:-mongodb://mongo:27017}
+      MONGO_BACKUP_INTERVAL_SEC: ${MONGO_BACKUP_INTERVAL_SEC:-86400}
+      MONGO_BACKUP_TARGET_DIR: /backups
+      MONGO_BACKUP_FILE_PREFIX: ${MONGO_BACKUP_FILE_PREFIX:-mongo}
+      MONGO_BACKUP_KEEP_LAST: ${MONGO_BACKUP_KEEP_LAST:-14}
+    volumes:
+      - ${MONGO_BACKUP_HOST_DIR:-../mongo-backups}:/backups
+    depends_on:
+      mongo:
+        condition: service_healthy
+
 #  worker:
 #    image: ${COMPOSE_PROJECT_NAME}-worker:${API_IMAGE_TAG:-latest}
 #    build:
