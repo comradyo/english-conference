@@ -20,7 +20,7 @@ from validator import Validator
 LOGGER = logging.getLogger("checker")
 UTC = timezone.utc
 
-WAITING_STATUS = "Ожидает проверки"
+WAITING_STATUS = "Ожидает проверки. Обновите вкладку через несколько секунд."
 PROCESSING_STATUS = "Идёт проверка"
 PASSED_STATUS = "Ошибок не найдено"
 FAILED_VALIDATION_STATUS = "Найдены замечания"

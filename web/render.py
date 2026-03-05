@@ -59,11 +59,18 @@ form, .cards, .meta, label, .meta-row, .record-highlights {{ display:grid; gap:1
 label, .meta-row {{ gap:6px; font-weight:600; }}
 .meta-row span {{ color:var(--muted); font-size:.9rem; font-weight:400; }}
 input, select, textarea, button {{ width:100%; font:inherit; color:inherit; border-radius:14px; border:1px solid var(--line); background:#fff; padding:12px 14px; }}
+input::placeholder, textarea::placeholder {{ color:#96a1a8; opacity:1; }}
 textarea {{ min-height:110px; resize:vertical; }}
 button {{ border:none; cursor:pointer; background:linear-gradient(135deg, #0f5959, #207070); color:#fff; font-weight:700; min-height:46px; }}
 .auth-actions {{ display:grid; gap:10px; justify-items:start; }}
 .text-button {{ width:auto; min-height:0; padding:0; border:none; background:none; color:var(--accent); font-weight:700; cursor:pointer; }}
 .action-link {{ display:inline-flex; align-items:center; justify-content:center; width:100%; min-height:46px; padding:12px 14px; border-radius:14px; background:var(--soft); color:var(--accent); font-weight:700; text-decoration:none; }}
+.modal-overlay {{ position:fixed; inset:0; z-index:1400; display:flex; align-items:center; justify-content:center; padding:20px; background:rgba(31,37,41,.45); backdrop-filter:blur(2px); }}
+.modal-window {{ width:min(560px, 100%); border:1px solid #b8e3c0; border-radius:16px; background:#fff; box-shadow:0 26px 56px rgba(15,89,89,.22); padding:16px 18px 18px; }}
+.modal-header {{ display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:8px; }}
+.modal-title {{ margin:0; font-size:1.16rem; color:var(--ok-text); }}
+.modal-close {{ width:34px; min-height:34px; padding:0; border:1px solid var(--line); border-radius:10px; background:#fff; color:var(--muted); font-size:1.25rem; font-weight:700; line-height:1; cursor:pointer; }}
+.modal-message {{ margin:0; color:var(--text); font-weight:600; }}
 .record-highlights {{ margin-bottom:16px; }}
 .record-highlight {{ border:1px solid var(--line); border-radius:16px; padding:16px; background:#fff; }}
 .record-highlight span {{ display:block; margin-bottom:8px; color:var(--muted); font-size:.95rem; font-weight:600; }}
@@ -86,7 +93,7 @@ button {{ border:none; cursor:pointer; background:linear-gradient(135deg, #0f595
 .admin-tools {{ display:grid; gap:10px; min-width:260px; }}
 .admin-tools form {{ gap:10px; }}
 .admin-tools textarea {{ min-height:84px; }}
-.section-meta {{ color:var(--muted); font-weight:600; }} .field-caption {{ display:inline-flex; align-items:baseline; gap:4px; }} .required-mark {{ color:#a33030; font-weight:800; }} .form-note {{ margin-top:14px; margin-bottom:0; font-size:.95rem; color:var(--muted); }} .site-footer {{ margin-top:18px; padding:14px 8px 0; text-align:center; color:var(--muted); font-size:.95rem; }}
+.section-meta {{ color:var(--muted); font-weight:600; }} .field-caption {{ display:inline-flex; align-items:baseline; gap:4px; }} .required-mark {{ color:#a33030; font-weight:800; }} .field-hint {{ color:var(--muted); font-size:.9rem; font-weight:500; }} .form-note {{ margin-top:14px; margin-bottom:0; font-size:.95rem; color:var(--muted); }} .site-footer {{ margin-top:18px; padding:14px 8px 0; text-align:center; color:var(--muted); font-size:.95rem; }}
 @media (max-width:820px) {{ .split, .grid {{ grid-template-columns:1fr; }} .shell {{ padding:18px; border-radius:18px; }} }}
 </style></head><body><main class="page"><section class="shell"><div class="topbar"><div><h1>{escape(title)}</h1></div><div class="topbar-side">{language_switcher(current_lang)}{user_badge(current_user, lang=current_lang)}</div></div><nav>{nav_html(current_user, lang=current_lang)}</nav>{banner(success, 'success')}{banner(error, 'error')}{body}</section><footer class="site-footer">{escape(text(current_lang, "footer"))}</footer></main><script>
 (() => {{
@@ -105,6 +112,29 @@ button {{ border:none; cursor:pointer; background:linear-gradient(135deg, #0f595
       url.searchParams.set('lang', targetLang);
       window.location.assign(url.toString());
     }});
+  }});
+}})();
+(() => {{
+  const overlay = document.querySelector('[data-modal-overlay]');
+  if (!overlay) {{
+    return;
+  }}
+  const closeModal = () => {{
+    overlay.remove();
+  }};
+  const closeButton = overlay.querySelector('[data-modal-close]');
+  if (closeButton) {{
+    closeButton.addEventListener('click', closeModal);
+  }}
+  overlay.addEventListener('click', (event) => {{
+    if (event.target === overlay) {{
+      closeModal();
+    }}
+  }});
+  document.addEventListener('keydown', (event) => {{
+    if (event.key === 'Escape') {{
+      closeModal();
+    }}
   }});
 }})();
 </script></body></html>"""
@@ -555,33 +585,44 @@ def render_conference_form(
       </form>
     </section>
     """
+    success_modal = ""
+    if success:
+        success_modal = (
+            '<div class="modal-overlay" data-modal-overlay>'
+            '<div class="modal-window" role="dialog" aria-modal="true">'
+            f'<div class="modal-header"><h3 class="modal-title">{escape(text(lang, "modal_success_title"))}</h3>'
+            f'<button type="button" class="modal-close" data-modal-close aria-label="{escape(text(lang, "modal_close"), quote=True)}">&times;</button></div>'
+            f'<p class="modal-message">{escape(success)}</p>'
+            "</div></div>"
+        )
     body = f"""
+    {success_modal}
     {precheck_section}
     <section class="panel"><h2>{escape(text(lang, "conference_title"))}</h2><p>{escape(text(lang, "conference_desc"))}</p>
       <form method="post" action="/conference/register" enctype="multipart/form-data">
         <div class="grid">
-          <label><span class="field-caption">{escape(field_label("last_name", lang=lang))} <span class="required-mark">*</span></span><input type="text" name="last_name" required value="{field_value(values, 'last_name')}"></label>
-          <label><span class="field-caption">{escape(field_label("first_name", lang=lang))} <span class="required-mark">*</span></span><input type="text" name="first_name" required value="{field_value(values, 'first_name')}"></label>
+          <label><span class="field-caption">{escape(field_label("last_name", lang=lang))} <span class="required-mark">*</span></span><input type="text" name="last_name" placeholder="{escape(text(lang, "placeholder_last_name"), quote=True)}" required value="{field_value(values, 'last_name')}"></label>
+          <label><span class="field-caption">{escape(field_label("first_name", lang=lang))} <span class="required-mark">*</span></span><input type="text" name="first_name" placeholder="{escape(text(lang, "placeholder_first_name"), quote=True)}" required value="{field_value(values, 'first_name')}"></label>
           <label><span class="field-caption">{escape(field_label("middle_name", lang=lang))}</span><input type="text" name="middle_name" value="{field_value(values, 'middle_name')}"></label>
-          <label><span class="field-caption">{escape(field_label("place_of_study", lang=lang))} <span class="required-mark">*</span></span><input type="text" name="place_of_study" required value="{field_value(values, 'place_of_study')}"></label>
-          <label><span class="field-caption">{escape(field_label("department", lang=lang))} <span class="required-mark">*</span></span><input type="text" name="department" required value="{field_value(values, 'department')}"></label>
+          <label><span class="field-caption">{escape(field_label("place_of_study", lang=lang))} <span class="required-mark">*</span></span><input type="text" name="place_of_study" placeholder="{escape(text(lang, "placeholder_place_of_study"), quote=True)}" required value="{field_value(values, 'place_of_study')}"></label>
+          <label><span class="field-caption">{escape(field_label("department", lang=lang))} <span class="required-mark">*</span></span><input type="text" name="department" placeholder="{escape(text(lang, "placeholder_department"), quote=True)}" required value="{field_value(values, 'department')}"></label>
           <label><span class="field-caption">{escape(field_label("place_of_work", lang=lang))}</span><input type="text" name="place_of_work" value="{field_value(values, 'place_of_work')}"></label>
           <label><span class="field-caption">{escape(field_label("job_title", lang=lang))}</span><input type="text" name="job_title" value="{field_value(values, 'job_title')}"></label>
-          <label><span class="field-caption">{escape(field_label("phone", lang=lang))} <span class="required-mark">*</span></span><input type="tel" name="phone" required value="{field_value(values, 'phone')}"></label>
-          <label><span class="field-caption">{escape(text(lang, "auth_email"))} <span class="required-mark">*</span></span><input type="email" name="email" required value="{field_value(values, 'email')}"></label>
+          <label><span class="field-caption">{escape(field_label("phone", lang=lang))} <span class="required-mark">*</span></span><input type="tel" name="phone" placeholder="{escape(text(lang, "placeholder_phone"), quote=True)}" required value="{field_value(values, 'phone')}"></label>
+          <label><span class="field-caption">{escape(text(lang, "auth_email"))} <span class="required-mark">*</span></span><input type="email" name="email" placeholder="{escape(text(lang, "placeholder_email"), quote=True)}" required value="{field_value(values, 'email')}"></label>
           <label><span class="field-caption">{escape(field_label("participation", lang=lang))} <span class="required-mark">*</span></span>{render_select('participation', PARTICIPATION_OPTIONS, values.get('participation'), lang=lang)}</label>
           <label><span class="field-caption">{escape(field_label("section", lang=lang))} <span class="required-mark">*</span></span>{render_select('section', SECTION_OPTIONS, values.get('section'), lang=lang)}</label>
           <label><span class="field-caption">{escape(field_label("publication_title", lang=lang))} <span class="required-mark">*</span></span><input type="text" name="publication_title" required value="{field_value(values, 'publication_title')}"></label>
           <label><span class="field-caption">{escape(field_label("foreign_language_consultant", lang=lang))} <span class="required-mark">*</span></span><input type="text" name="foreign_language_consultant" required value="{field_value(values, 'foreign_language_consultant')}"></label>
-          <label><span class="field-caption">{escape(field_label("publication_file", lang=lang))} <span class="required-mark">*</span></span><input type="file" name="publication_file" accept=".docx" required></label>
-          <label><span class="field-caption">{escape(field_label("expert_opinion_file", lang=lang))}</span><input type="file" name="expert_opinion_file" accept=".docx"></label>
+          <label><span class="field-caption">{escape(field_label("publication_file", lang=lang))} <span class="required-mark">*</span></span><input type="file" name="publication_file" accept=".docx" required><span class="field-hint">{escape(text(lang, "hint_publication_file"))}</span></label>
+          <label><span class="field-caption">{escape(field_label("expert_opinion_file", lang=lang))}</span><input type="file" name="expert_opinion_file" accept=".docx"><span class="field-hint">{escape(text(lang, "hint_expert_opinion_file"))}</span></label>
         </div>
         <button type="submit">{escape(text(lang, "submit_application"))}</button>
       </form>
       <p class="form-note"><span class="required-mark">*</span> {escape(text(lang, "required_note"))}</p>
     </section>
     """
-    return layout(text(lang, "conference_page_title"), body, current_user=current_user, success=success, error=error, lang=lang)
+    return layout(text(lang, "conference_page_title"), body, current_user=current_user, error=error, lang=lang)
 
 
 def _legacy_render_record_card(record: dict[str, Any], *, admin_mode: bool) -> str:
