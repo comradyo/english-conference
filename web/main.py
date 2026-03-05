@@ -377,7 +377,10 @@ async def forgot_password(
             "expires_at": expires_at,
             "used_at": None,
         }
-        reset_url = f'{request.url_for("reset_password_page_view")}?token={quote(token, safe="")}&lang={quote(lang, safe="")}'
+        reset_base_url = str(request.url_for("reset_password_page_view"))
+        if reset_base_url.startswith("http://"):
+            reset_base_url = f"https://{reset_base_url[len('http://'):]}"
+        reset_url = f'{reset_base_url}?token={quote(token, safe="")}&lang={quote(lang, safe="")}'
         try:
             await request.app.state.password_reset_tokens_collection.insert_one(token_doc)
             task = build_password_reset_email_task(
