@@ -93,7 +93,7 @@ button {{ border:none; cursor:pointer; background:linear-gradient(135deg, #0f595
 .admin-tools {{ display:grid; gap:10px; min-width:260px; }}
 .admin-tools form {{ gap:10px; }}
 .admin-tools textarea {{ min-height:84px; }}
-.section-meta {{ color:var(--muted); font-weight:600; }} .field-caption {{ display:inline-flex; align-items:baseline; gap:4px; }} .required-mark {{ color:#a33030; font-weight:800; }} .field-hint {{ color:var(--muted); font-size:.9rem; font-weight:500; }} .form-note {{ margin-top:14px; margin-bottom:0; font-size:.95rem; color:var(--muted); }} .site-footer {{ margin-top:18px; padding:14px 8px 0; text-align:center; color:var(--muted); font-size:.95rem; }}
+.section-meta {{ color:var(--muted); font-weight:600; }} .field-caption {{ display:inline-flex; align-items:baseline; gap:4px; }} .required-mark {{ color:#a33030; font-weight:800; }} .field-hint {{ color:var(--muted); font-size:.9rem; font-weight:500; }} .consent-row {{ display:flex; align-items:flex-start; gap:10px; font-weight:600; }} .consent-row input[type="checkbox"] {{ width:18px; min-width:18px; height:18px; margin-top:2px; padding:0; border-radius:4px; accent-color:var(--accent); }} .submit-button:disabled {{ background:#c9ced3; color:#7a8288; cursor:not-allowed; }} .form-note {{ margin-top:14px; margin-bottom:0; font-size:.95rem; color:var(--muted); }} .site-footer {{ margin-top:18px; padding:14px 8px 0; text-align:center; color:var(--muted); font-size:.95rem; }}
 @media (max-width:820px) {{ .split, .grid {{ grid-template-columns:1fr; }} .shell {{ padding:18px; border-radius:18px; }} }}
 </style></head><body><main class="page"><section class="shell"><div class="topbar"><div><h1>{escape(title)}</h1></div><div class="topbar-side">{language_switcher(current_lang)}{user_badge(current_user, lang=current_lang)}</div></div><nav>{nav_html(current_user, lang=current_lang)}</nav>{banner(success, 'success')}{banner(error, 'error')}{body}</section><footer class="site-footer">{escape(text(current_lang, "footer"))}</footer></main><script>
 (() => {{
@@ -605,14 +605,13 @@ def render_conference_form(
             '<div class="modal-window" role="dialog" aria-modal="true">'
             f'<div class="modal-header"><h3 class="modal-title">{escape(text(lang, "modal_success_title"))}</h3>'
             f'<button type="button" class="modal-close" data-modal-close aria-label="{escape(text(lang, "modal_close"), quote=True)}">&times;</button></div>'
-            f'<p class="modal-message">{escape(success)}</p>'
             "</div></div>"
         )
     body = f"""
     {success_modal}
     {precheck_section}
     <section class="panel"><h2>{escape(text(lang, "conference_title"))}</h2><p>{escape(text(lang, "conference_desc"))}</p>
-      <form method="post" action="/conference/register" enctype="multipart/form-data">
+      <form id="conference-registration-form" method="post" action="/conference/register" enctype="multipart/form-data">
         <div class="grid">
           <label><span class="field-caption">{escape(field_label("last_name", lang=lang))} <span class="required-mark">*</span></span><input type="text" name="last_name" placeholder="{escape(text(lang, "placeholder_last_name"), quote=True)}" required value="{field_value(values, 'last_name')}"></label>
           <label><span class="field-caption">{escape(field_label("first_name", lang=lang))} <span class="required-mark">*</span></span><input type="text" name="first_name" placeholder="{escape(text(lang, "placeholder_first_name"), quote=True)}" required value="{field_value(values, 'first_name')}"></label>
@@ -630,8 +629,24 @@ def render_conference_form(
           <label><span class="field-caption">{escape(field_label("publication_file", lang=lang))} <span class="required-mark">*</span></span><input type="file" name="publication_file" accept=".docx" required><span class="field-hint">{escape(text(lang, "hint_publication_file"))}</span></label>
           <label><span class="field-caption">{escape(field_label("expert_opinion_file", lang=lang))}</span><input type="file" name="expert_opinion_file" accept=".docx"><span class="field-hint">{escape(text(lang, "hint_expert_opinion_file"))}</span></label>
         </div>
-        <button type="submit">{escape(text(lang, "submit_application"))}</button>
+        <label class="consent-row"><input type="checkbox" name="personal_data_consent" required><span>{escape(text(lang, "personal_data_consent"))}</span></label>
+        <button id="conference-submit-button" class="submit-button" type="submit" disabled>{escape(text(lang, "submit_application"))}</button>
       </form>
+      <script>
+        (() => {{
+          const form = document.getElementById("conference-registration-form");
+          const submitButton = document.getElementById("conference-submit-button");
+          if (!form || !submitButton) {{
+            return;
+          }}
+          const updateSubmitState = () => {{
+            submitButton.disabled = !form.checkValidity();
+          }};
+          form.addEventListener("input", updateSubmitState);
+          form.addEventListener("change", updateSubmitState);
+          updateSubmitState();
+        }})();
+      </script>
       <p class="form-note"><span class="required-mark">*</span> {escape(text(lang, "required_note"))}</p>
     </section>
     """

@@ -118,6 +118,10 @@ TEXTS: dict[str, dict[str, str]] = {
         "ru": "При отсутствии на момент подачи заявки необходимо впоследствии отправить на graduate.applications@yandex.ru",
         "en": "If unavailable at the time of application should be sent subsequently to graduate.applications@yandex.ru",
     },
+    "personal_data_consent": {
+        "ru": "Согласен на обработку персональных данных",
+        "en": "I agree to the processing of personal data",
+    },
     "modal_close": {"ru": "Закрыть", "en": "Close"},
     "modal_success_title": {"ru": "Заявка сохранена", "en": "Application saved"},
     "submit_application": {"ru": "Сохранить заявку", "en": "Save application"},
