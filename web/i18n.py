@@ -301,6 +301,7 @@ FIELD_LABELS: dict[str, dict[str, str]] = {
     "job_title": {"ru": "Должность", "en": "Position"},
     "phone": {"ru": "Телефон для связи", "en": "Contact phone number"},
     "email": {"ru": "Электронная почта", "en": "Email"},
+    "form_language": {"ru": "Язык заполнения формы", "en": "Form language"},
     "participation": {"ru": "Формат участия", "en": "Participation format"},
     "section": {"ru": "Секция", "en": "Scope"},
     "publication_title": {"ru": "Название публикации", "en": "Title of publication"},

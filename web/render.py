@@ -293,6 +293,17 @@ def field_label(path: str, *, lang: str = DEFAULT_LANGUAGE) -> str:
     return localized_field_label(lang, path)
 
 
+def form_language_label(value: Any, *, lang: str = DEFAULT_LANGUAGE) -> str:
+    value_text = str(value or "").strip().lower()
+    if not value_text:
+        return text(lang, "not_specified")
+    if value_text == "ru":
+        return text(lang, "language_ru")
+    if value_text == "en":
+        return text(lang, "language_en")
+    return value_text
+
+
 def _legacy_render_object_fields(record: dict[str, Any]) -> str:
     rows: list[str] = []
 
@@ -394,6 +405,8 @@ def render_object_fields(record: dict[str, Any], *, lang: str = DEFAULT_LANGUAGE
             value_text = participation_label(lang, value_text)
         elif path == "section":
             value_text = section_label(lang, value_text)
+        elif path == "form_language":
+            value_text = form_language_label(value_text, lang=lang)
         rows.append(meta_row(field_label(path, lang=lang), value_text))
 
     for key, value in record.items():
@@ -723,6 +736,7 @@ def render_record_card(record: dict[str, Any], *, admin_mode: bool, lang: str = 
             text(lang, "expert_file_size"),
             f"{int(expert_opinion_file.get('size_bytes', 0))} {text(lang, 'bytes_unit')}" if expert_opinion_file.get("filename") else text(lang, "not_specified"),
         ),
+        meta_row(field_label("form_language", lang=lang), form_language_label(record.get("form_language"), lang=lang)),
         meta_row(field_label("created_at", lang=lang), format_dt(record.get("created_at"), lang=lang)),
     ]
     if admin_mode:

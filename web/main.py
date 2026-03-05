@@ -732,6 +732,7 @@ async def submit_conference_registration(
         {
             "owner_user_id": current_user["_id"],
             "owner_email": current_user["email"],
+            "form_language": lang,
             "last_name": payload.last_name,
             "first_name": payload.first_name,
             "middle_name": payload.middle_name,
