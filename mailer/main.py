@@ -18,6 +18,11 @@ from pymongo import ReturnDocument
 LOGGER = logging.getLogger("mailer")
 UTC = timezone.utc
 MOSCOW_TZ = timezone(timedelta(hours=3), name="UTC+3")
+REVIEW_STATUS_EN = {
+    "На рассмотрении": "Under review",
+    "Принята": "Accepted",
+    "Отклонена": "Rejected",
+}
 
 
 def now_utc() -> datetime:
@@ -90,10 +95,11 @@ def build_registration_update_message(settings: Settings, payload: dict[str, Any
     review_status = str(payload.get("review_status") or "На рассмотрении").strip() or "На рассмотрении"
     admin_comment = str(payload.get("admin_comment") or "Комментарий не указан.").strip() or "Комментарий не указан."
     registration_id = str(payload.get("registration_id") or "").strip()
-    updated_at = now_utc().astimezone(MOSCOW_TZ).strftime("%d.%m.%Y %H:%M (МСК)")
+    updated_at = now_utc().astimezone(MOSCOW_TZ).strftime("%d.%m.%Y %H:%M")
+    review_status_en = REVIEW_STATUS_EN.get(review_status, review_status)
 
     message = EmailMessage()
-    message["Subject"] = "Обновление заявки на конференцию"
+    message["Subject"] = "Обновление заявки на конференцию / Conference application update"
     message["From"] = settings.notification_email_sender
     message["To"] = recipient
     message.set_content(
@@ -107,9 +113,23 @@ def build_registration_update_message(settings: Settings, payload: dict[str, Any
                 f"Название публикации: {publication_title}",
                 f"Статус заявки: {review_status}",
                 f"Комментарий администратора: {admin_comment}",
-                f"Время обновления: {updated_at}",
+                f"Время обновления: {updated_at} (МСК)",
                 "",
                 "Это письмо отправлено автоматически.",
+                "",
+                "------------------------------------------------------------",
+                "",
+                "Hello!",
+                "",
+                "Your conference application has been updated.",
+                f"Application ID: {registration_id or 'Not specified'}",
+                f"Participant: {participant_name}",
+                f"Publication title: {publication_title}",
+                f"Application status: {review_status_en}",
+                f"Administrator comment: {admin_comment}",
+                f"Updated at: {updated_at} (MSK)",
+                "",
+                "This email was sent automatically.",
             ]
         )
     )
@@ -127,12 +147,15 @@ def build_password_reset_message(settings: Settings, payload: dict[str, Any]) ->
 
     expires_at = payload.get("expires_at")
     if isinstance(expires_at, datetime):
-        expires_text = expires_at.astimezone(MOSCOW_TZ).strftime("%d.%m.%Y %H:%M (МСК)")
+        expires_dt = expires_at.astimezone(MOSCOW_TZ).strftime("%d.%m.%Y %H:%M")
+        expires_text_ru = f"{expires_dt} (МСК)"
+        expires_text_en = f"{expires_dt} (MSK)"
     else:
-        expires_text = "ограниченное время"
+        expires_text_ru = "ограниченное время"
+        expires_text_en = "a limited time"
 
     message = EmailMessage()
-    message["Subject"] = "Смена пароля"
+    message["Subject"] = "Смена пароля / Password reset"
     message["From"] = settings.notification_email_sender
     message["To"] = recipient
     message.set_content(
@@ -144,8 +167,19 @@ def build_password_reset_message(settings: Settings, payload: dict[str, Any]) ->
                 "Чтобы установить новый пароль, перейдите по ссылке:",
                 reset_url,
                 "",
-                f"Ссылка действительна до: {expires_text}",
+                f"Ссылка действительна до: {expires_text_ru}",
                 "Если вы не запрашивали смену пароля, просто проигнорируйте это письмо.",
+                "",
+                "------------------------------------------------------------",
+                "",
+                "Hello!",
+                "",
+                "A password reset was requested for your account.",
+                "To set a new password, follow this link:",
+                reset_url,
+                "",
+                f"Link is valid until: {expires_text_en}",
+                "If you did not request a password reset, you can ignore this email.",
             ]
         )
     )
