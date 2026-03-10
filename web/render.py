@@ -686,7 +686,7 @@ def render_conference_form(
       {banner(precheck_error, 'error')}
       {precheck_result_html}
       <form method="post" action="/conference/precheck" enctype="multipart/form-data">
-        <label><span class="field-caption">{escape(field_label("publication_file", lang=lang))} <span class="required-mark">*</span></span><input type="file" name="publication_file" accept=".docx" required></label>
+        <label><span class="field-caption">{escape(field_label("publication_file", lang=lang))}</span><input type="file" name="publication_file" accept=".docx" required></label>
         <button type="submit">{escape(text(lang, "precheck_button"))}</button>
       </form>
     </section>
