@@ -251,7 +251,18 @@ def build_registration_update_email_task(record: dict[str, Any], *, lang: str = 
     full_name = " ".join(part for part in [last_name, first_name, middle_name] if part) or text(DEFAULT_LANGUAGE, "participant_fallback")
     publication_title = str(record.get("publication_title") or "").strip() or text(DEFAULT_LANGUAGE, "untitled_publication")
     review_status = str(record.get("review_status") or "").strip() or REVIEW_STATUSES[0]
-    admin_comment = str(record.get("admin_comment") or "").strip() or text(DEFAULT_LANGUAGE, "comment_not_specified")
+    admin_comment = text(DEFAULT_LANGUAGE, "comment_not_specified")
+    comments = record.get("comments")
+    if isinstance(comments, list):
+        for item in reversed(comments):
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("author_role") or "").strip().lower() != "admin":
+                continue
+            candidate_text = str(item.get("text") or "").strip()
+            if candidate_text:
+                admin_comment = candidate_text
+                break
     queued_at = now_utc()
 
     return {

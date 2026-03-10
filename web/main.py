@@ -56,6 +56,9 @@ from state import lifespan
 
 app = FastAPI(title="Conference Personal Cabinet", lifespan=lifespan)
 
+PENDING_REVIEW_STATUS = REVIEW_STATUSES[0]
+REVISION_REVIEW_STATUS = REVIEW_STATUSES[2]
+
 
 def with_language(request: Request, response):
     apply_language_cookie(response, request_language(request))
@@ -79,6 +82,97 @@ def file_document(upload: UploadFile | None, content: bytes | None) -> dict[str,
         "size_bytes": len(content),
         "data": Binary(content),
     }
+
+
+def registration_comment_entry(
+    *,
+    author_role: str,
+    author_email: str,
+    comment_text: str,
+) -> dict[str, object]:
+    return {
+        "author_role": author_role,
+        "author_email": normalize_email(author_email),
+        "text": comment_text,
+        "created_at": now_utc(),
+    }
+
+
+def conference_form_values(
+    *,
+    last_name: str,
+    first_name: str,
+    middle_name: str,
+    place_of_study: str,
+    department: str,
+    place_of_work: str,
+    job_title: str,
+    phone: str,
+    email: str,
+    participation: str,
+    section: str,
+    publication_title: str,
+    foreign_language_consultant: str,
+) -> dict[str, str]:
+    return {
+        "last_name": last_name,
+        "first_name": first_name,
+        "middle_name": middle_name,
+        "place_of_study": place_of_study,
+        "department": department,
+        "place_of_work": place_of_work,
+        "job_title": job_title,
+        "phone": phone,
+        "email": email,
+        "participation": participation,
+        "section": section,
+        "publication_title": publication_title,
+        "foreign_language_consultant": foreign_language_consultant,
+    }
+
+
+def conference_form_values_from_record(record: dict[str, object]) -> dict[str, str]:
+    return conference_form_values(
+        last_name=str(record.get("last_name") or ""),
+        first_name=str(record.get("first_name") or ""),
+        middle_name=str(record.get("middle_name") or ""),
+        place_of_study=str(record.get("place_of_study") or ""),
+        department=str(record.get("department") or ""),
+        place_of_work=str(record.get("place_of_work") or ""),
+        job_title=str(record.get("job_title") or ""),
+        phone=str(record.get("phone") or ""),
+        email=str(record.get("email") or ""),
+        participation=str(record.get("participation") or ""),
+        section=str(record.get("section") or ""),
+        publication_title=str(record.get("publication_title") or ""),
+        foreign_language_consultant=str(record.get("foreign_language_consultant") or ""),
+    )
+
+
+def registration_file_name(record: dict[str, object], field_name: str) -> str:
+    file_info = record.get(field_name)
+    if not isinstance(file_info, dict):
+        return ""
+    return str(file_info.get("filename") or "").strip()
+
+
+async def find_revision_registration_for_user(
+    request: Request,
+    *,
+    registration_id: str,
+    owner_user_id,
+) -> dict | None:
+    object_id = parse_object_id(registration_id)
+    if object_id is None:
+        return None
+    return await request.app.state.registrations_collection.find_one(
+        {
+            "_id": object_id,
+            "owner_user_id": owner_user_id,
+            "review_status": REVISION_REVIEW_STATUS,
+        },
+        {"publication_file.data": 0, "expert_opinion_file.data": 0},
+    )
 
 
 async def request_publication_precheck(
@@ -230,7 +324,7 @@ async def _save_admin_comment_impl(
     registration_id: str,
     request: Request,
     review_status: str,
-    admin_comment: str,
+    comment_text: str,
 ):
     lang = request_language(request)
     current_user, response = await require_admin(request, lambda user: render_forbidden(user, lang=lang))
@@ -275,10 +369,25 @@ async def _save_admin_comment_impl(
             status_code=404,
         )
 
-    trimmed_comment = admin_comment.strip()
+    trimmed_comment = comment_text.strip()
+    appended_comment = None
+    update_doc: dict[str, dict[str, object]] = {
+        "$set": {
+            "review_status": review_status,
+            "updated_at": now_utc(),
+        }
+    }
+    if trimmed_comment:
+        appended_comment = registration_comment_entry(
+            author_role="admin",
+            author_email=str(current_user["email"]),
+            comment_text=trimmed_comment,
+        )
+        update_doc["$push"] = {"comments": appended_comment}
+
     update_result = await request.app.state.registrations_collection.update_one(
         {"_id": object_id},
-        {"$set": {"admin_comment": trimmed_comment, "review_status": review_status}},
+        update_doc,
     )
     if update_result.matched_count == 0:
         return build_error_page(
@@ -292,7 +401,11 @@ async def _save_admin_comment_impl(
         )
 
     updated_record = dict(record)
-    updated_record["admin_comment"] = trimmed_comment
+    current_comments = record.get("comments")
+    updated_comments = [item for item in current_comments if isinstance(item, dict)] if isinstance(current_comments, list) else []
+    if appended_comment is not None:
+        updated_comments.append(appended_comment)
+    updated_record["comments"] = updated_comments
     updated_record["review_status"] = review_status
     back_link_html = (
         f'<a href="/all_applications?selected={registration_id}">'
@@ -605,6 +718,37 @@ async def conference_registration_page(request: Request):
     return with_language(request, render_conference_form(current_user, lang=lang))
 
 
+@app.get("/conference/register/{registration_id}/edit")
+async def edit_conference_registration_page(
+    registration_id: str,
+    request: Request,
+):
+    lang = request_language(request)
+    current_user, response = await require_user(request)
+    if response:
+        return response
+
+    existing_record = await find_revision_registration_for_user(
+        request,
+        registration_id=registration_id,
+        owner_user_id=current_user["_id"],
+    )
+    if existing_record is None:
+        return localized_redirect(request, "/my-registrations?notice=edit_not_allowed", status_code=303)
+
+    return with_language(
+        request,
+        render_conference_form(
+            current_user,
+            values=conference_form_values_from_record(existing_record),
+            edit_registration_id=str(existing_record["_id"]),
+            existing_publication_file_name=registration_file_name(existing_record, "publication_file"),
+            existing_expert_opinion_file_name=registration_file_name(existing_record, "expert_opinion_file"),
+            lang=lang,
+        ),
+    )
+
+
 @app.post("/conference/precheck")
 async def precheck_publication_file(
     request: Request,
@@ -651,8 +795,8 @@ async def submit_conference_registration(
     first_name: str = Form(...),
     middle_name: str = Form(""),
     place_of_study: str = Form(...),
-    department: str = Form(...),
-    place_of_work: str = Form(""),
+    department: str = Form(""),
+    place_of_work: str = Form(...),
     job_title: str = Form(""),
     phone: str = Form(...),
     email: str = Form(...),
@@ -669,23 +813,23 @@ async def submit_conference_registration(
         return response
 
     middle_name_value = optional_form_value(middle_name)
-    place_of_work_value = optional_form_value(place_of_work)
+    department_value = optional_form_value(department)
     job_title_value = optional_form_value(job_title)
-    form_values = {
-        "last_name": last_name,
-        "first_name": first_name,
-        "middle_name": middle_name,
-        "place_of_study": place_of_study,
-        "department": department,
-        "place_of_work": place_of_work,
-        "job_title": job_title,
-        "phone": phone,
-        "email": email,
-        "participation": participation,
-        "section": section,
-        "publication_title": publication_title,
-        "foreign_language_consultant": foreign_language_consultant,
-    }
+    form_values = conference_form_values(
+        last_name=last_name,
+        first_name=first_name,
+        middle_name=middle_name,
+        place_of_study=place_of_study,
+        department=department,
+        place_of_work=place_of_work,
+        job_title=job_title,
+        phone=phone,
+        email=email,
+        participation=participation,
+        section=section,
+        publication_title=publication_title,
+        foreign_language_consultant=foreign_language_consultant,
+    )
 
     try:
         payload = ConferenceRegistrationPayload(
@@ -693,8 +837,8 @@ async def submit_conference_registration(
             first_name=first_name,
             middle_name=middle_name_value,
             place_of_study=place_of_study,
-            department=department,
-            place_of_work=place_of_work_value,
+            department=department_value,
+            place_of_work=place_of_work,
             job_title=job_title_value,
             phone=phone,
             email=normalize_email(email),
@@ -752,8 +896,8 @@ async def submit_conference_registration(
             "publication_file": file_document(publication_file, publication_file_content),
             "expert_opinion_file": file_document(expert_opinion_file, expert_opinion_content),
             "publication_validation": build_initial_publication_validation(),
-            "review_status": REVIEW_STATUSES[0],
-            "admin_comment": "",
+            "review_status": PENDING_REVIEW_STATUS,
+            "comments": [],
             "created_at": now_utc(),
         }
     )
@@ -766,6 +910,205 @@ async def submit_conference_registration(
     )
     result.status_code = 201
     return with_language(request, result)
+
+
+@app.post("/conference/register/{registration_id}/edit")
+async def update_conference_registration(
+    registration_id: str,
+    request: Request,
+    last_name: str = Form(...),
+    first_name: str = Form(...),
+    middle_name: str = Form(""),
+    place_of_study: str = Form(...),
+    department: str = Form(""),
+    place_of_work: str = Form(...),
+    job_title: str = Form(""),
+    phone: str = Form(...),
+    email: str = Form(...),
+    participation: str = Form(...),
+    section: str = Form(...),
+    publication_title: str = Form(...),
+    foreign_language_consultant: str = Form(...),
+    publication_file: UploadFile | None = File(None),
+    expert_opinion_file: UploadFile | None = File(None),
+):
+    lang = request_language(request)
+    current_user, response = await require_user(request)
+    if response:
+        return response
+
+    existing_record = await find_revision_registration_for_user(
+        request,
+        registration_id=registration_id,
+        owner_user_id=current_user["_id"],
+    )
+    if existing_record is None:
+        return localized_redirect(request, "/my-registrations?notice=edit_not_allowed", status_code=303)
+
+    form_values = conference_form_values(
+        last_name=last_name,
+        first_name=first_name,
+        middle_name=middle_name,
+        place_of_study=place_of_study,
+        department=department,
+        place_of_work=place_of_work,
+        job_title=job_title,
+        phone=phone,
+        email=email,
+        participation=participation,
+        section=section,
+        publication_title=publication_title,
+        foreign_language_consultant=foreign_language_consultant,
+    )
+    existing_publication_file_name = registration_file_name(existing_record, "publication_file")
+    existing_expert_file_name = registration_file_name(existing_record, "expert_opinion_file")
+
+    middle_name_value = optional_form_value(middle_name)
+    department_value = optional_form_value(department)
+    job_title_value = optional_form_value(job_title)
+
+    try:
+        payload = ConferenceRegistrationPayload(
+            last_name=last_name,
+            first_name=first_name,
+            middle_name=middle_name_value,
+            place_of_study=place_of_study,
+            department=department_value,
+            place_of_work=place_of_work,
+            job_title=job_title_value,
+            phone=phone,
+            email=normalize_email(email),
+            participation=participation,
+            section=section,
+            publication_title=publication_title,
+            foreign_language_consultant=foreign_language_consultant,
+        )
+        publication_file_content = await read_docx(
+            publication_file,
+            required=False,
+            field_label=field_label(lang, "publication_file"),
+            lang=lang,
+        )
+        expert_opinion_content = await read_docx(
+            expert_opinion_file,
+            required=False,
+            field_label=field_label(lang, "expert_opinion_file"),
+            lang=lang,
+        )
+    except ValidationError as exc:
+        result = render_conference_form(
+            current_user,
+            error=validation_message(exc, text(lang, "form_invalid"), lang=lang),
+            values=form_values,
+            edit_registration_id=str(existing_record["_id"]),
+            existing_publication_file_name=existing_publication_file_name,
+            existing_expert_opinion_file_name=existing_expert_file_name,
+            lang=lang,
+        )
+        result.status_code = 400
+        return with_language(request, result)
+    except HTTPException as exc:
+        result = render_conference_form(
+            current_user,
+            error=str(exc.detail),
+            values=form_values,
+            edit_registration_id=str(existing_record["_id"]),
+            existing_publication_file_name=existing_publication_file_name,
+            existing_expert_opinion_file_name=existing_expert_file_name,
+            lang=lang,
+        )
+        result.status_code = exc.status_code
+        return with_language(request, result)
+
+    if publication_file_content is None and not existing_publication_file_name:
+        result = render_conference_form(
+            current_user,
+            error=text(lang, "docx_file_required", field=field_label(lang, "publication_file")),
+            values=form_values,
+            edit_registration_id=str(existing_record["_id"]),
+            existing_publication_file_name=existing_publication_file_name,
+            existing_expert_opinion_file_name=existing_expert_file_name,
+            lang=lang,
+        )
+        result.status_code = 400
+        return with_language(request, result)
+
+    update_fields: dict[str, object] = {
+        "owner_email": current_user["email"],
+        "form_language": lang,
+        "last_name": payload.last_name,
+        "first_name": payload.first_name,
+        "middle_name": payload.middle_name,
+        "place_of_study": payload.place_of_study,
+        "department": payload.department,
+        "place_of_work": payload.place_of_work,
+        "job_title": payload.job_title,
+        "phone": payload.phone,
+        "email": normalize_email(str(payload.email)),
+        "participation": payload.participation,
+        "section": payload.section,
+        "publication_title": payload.publication_title,
+        "foreign_language_consultant": payload.foreign_language_consultant,
+        "publication_validation": build_initial_publication_validation(),
+        "review_status": PENDING_REVIEW_STATUS,
+        "updated_at": now_utc(),
+    }
+    if publication_file_content is not None:
+        update_fields["publication_file"] = file_document(publication_file, publication_file_content)
+    if expert_opinion_content is not None:
+        update_fields["expert_opinion_file"] = file_document(expert_opinion_file, expert_opinion_content)
+
+    update_result = await request.app.state.registrations_collection.update_one(
+        {
+            "_id": existing_record["_id"],
+            "owner_user_id": current_user["_id"],
+            "review_status": REVISION_REVIEW_STATUS,
+        },
+        {"$set": update_fields},
+    )
+    if update_result.matched_count == 0:
+        return localized_redirect(request, "/my-registrations?notice=edit_not_allowed", status_code=303)
+
+    return localized_redirect(request, "/my-registrations?notice=registration_updated", status_code=303)
+
+
+@app.post("/my-registrations/comment/{registration_id}", include_in_schema=False)
+async def save_author_comment(
+    registration_id: str,
+    request: Request,
+    comment_text: str = Form(""),
+):
+    current_user, response = await require_user(request)
+    if response:
+        return response
+
+    trimmed_comment = comment_text.strip()
+    if not trimmed_comment:
+        return localized_redirect(request, "/my-registrations?notice=comment_empty", status_code=303)
+
+    object_id = parse_object_id(registration_id)
+    if object_id is None:
+        return localized_redirect(request, "/my-registrations?notice=comment_add_failed", status_code=303)
+
+    appended_comment = registration_comment_entry(
+        author_role="author",
+        author_email=str(current_user["email"]),
+        comment_text=trimmed_comment,
+    )
+    update_result = await request.app.state.registrations_collection.update_one(
+        {
+            "_id": object_id,
+            "owner_user_id": current_user["_id"],
+        },
+        {
+            "$push": {"comments": appended_comment},
+            "$set": {"updated_at": now_utc()},
+        },
+    )
+    if update_result.matched_count == 0:
+        return localized_redirect(request, "/my-registrations?notice=comment_add_failed", status_code=303)
+
+    return localized_redirect(request, "/my-registrations?notice=comment_added", status_code=303)
 
 
 @app.get("/my-registrations")
@@ -835,9 +1178,9 @@ async def save_admin_comment(
     registration_id: str,
     request: Request,
     review_status: str = Form(""),
-    admin_comment: str = Form(""),
+    comment_text: str = Form(""),
 ):
-    return await _save_admin_comment_impl(registration_id, request, review_status, admin_comment)
+    return await _save_admin_comment_impl(registration_id, request, review_status, comment_text)
 
 
 @app.get("/health", include_in_schema=False)

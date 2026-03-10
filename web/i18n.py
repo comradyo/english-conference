@@ -31,6 +31,26 @@ TEXTS: dict[str, dict[str, str]] = {
         "ru": "Комментарий и статус заявки сохранены.",
         "en": "The comment and application status have been saved.",
     },
+    "notice_comment_added": {
+        "ru": "Комментарий добавлен.",
+        "en": "The comment has been added.",
+    },
+    "notice_comment_empty": {
+        "ru": "Пустой комментарий не сохранён.",
+        "en": "An empty comment was not saved.",
+    },
+    "notice_comment_add_failed": {
+        "ru": "Не удалось добавить комментарий к заявке.",
+        "en": "Failed to add a comment to the application.",
+    },
+    "notice_registration_updated": {
+        "ru": "Заявка обновлена и отправлена на повторное рассмотрение.",
+        "en": "The application has been updated and resubmitted for review.",
+    },
+    "notice_edit_not_allowed": {
+        "ru": "Редактирование доступно только для заявок со статусом «На доработке».",
+        "en": "Editing is available only for applications with the \"Needs revision\" status.",
+    },
     "notice_password_reset_email_queued": {
         "ru": "Если аккаунт с таким email существует, мы отправили ссылку для смены пароля.",
         "en": "If an account with this email exists, we have sent a password reset link.",
@@ -45,6 +65,19 @@ TEXTS: dict[str, dict[str, str]] = {
     "no_remarks": {"ru": "Нет замечаний", "en": "No remarks"},
     "comment_not_added": {"ru": "Комментарий пока не добавлен.", "en": "No comment has been added yet."},
     "comment_not_specified": {"ru": "Комментарий не указан.", "en": "No comment provided."},
+    "comment_add_label": {"ru": "Добавить комментарий", "en": "Add comment"},
+    "comment_submit_button": {"ru": "Отправить комментарий", "en": "Send comment"},
+    "admin_comment_placeholder": {
+        "ru": "Добавьте комментарий для автора заявки",
+        "en": "Add a comment for the application author",
+    },
+    "author_comment_placeholder": {
+        "ru": "Напишите комментарий к заявке",
+        "en": "Write a comment to the application",
+    },
+    "comment_author_admin": {"ru": "Администратор", "en": "Administrator"},
+    "comment_author_author": {"ru": "Автор заявки", "en": "Application author"},
+    "comment_author_unknown": {"ru": "Участник", "en": "Participant"},
     "unnamed_record": {"ru": "Заявка без имени", "en": "Application without a name"},
     "unnamed_person": {"ru": "Без имени", "en": "Unnamed"},
     "without_section": {"ru": "Без секции", "en": "No section"},
@@ -97,13 +130,19 @@ TEXTS: dict[str, dict[str, str]] = {
         "ru": 'После сохранения заявка появится в разделе "Мои заявки".',
         "en": 'After saving, the application will appear in the "My applications" section.',
     },
+    "conference_edit_page_title": {"ru": "Редактирование заявки", "en": "Edit application"},
+    "conference_edit_title": {"ru": "Редактирование заявки", "en": "Edit application"},
+    "conference_edit_desc": {
+        "ru": "Исправьте данные и сохраните заявку. После обновления она снова попадёт на рассмотрение.",
+        "en": "Update the data and save the application. After saving it will be sent for review again.",
+    },
     "precheck_title": {
         "ru": "Предварительная проверка файла публикации",
         "en": "Preliminary publication file validation",
     },
     "precheck_desc": {
-        "ru": "Загрузите .docx-файл, чтобы проверить его перед отправкой основной заявки.",
-        "en": "Upload a .docx file to validate it before submitting the main application.",
+        "ru": "Вы можете загрузить .docx-файл, чтобы проверить его перед отправкой основной заявки.",
+        "en": "You can upload a .docx file to validate it before submitting the main application.",
     },
     "precheck_result": {"ru": "Результат проверки", "en": "Validation result"},
     "precheck_button": {"ru": "Проверить файл", "en": "Validate file"},
@@ -114,9 +153,17 @@ TEXTS: dict[str, dict[str, str]] = {
     "placeholder_phone": {"ru": "+79001000102", "en": "+79001000102"},
     "placeholder_email": {"ru": "example@bmstu.ru", "en": "example@bmstu.ru"},
     "hint_publication_file": {"ru": "Формат docx, размер <10Мб", "en": "docx, <10Мб"},
+    "hint_participation_student_moscow": {
+        "ru": "Для студентов московских ВУЗов возможно только выступление с презентацией.",
+        "en": "For students of Moscow universities only oral presentation participation is allowed.",
+    },
     "hint_expert_opinion_file": {
         "ru": "При отсутствии на момент подачи заявки необходимо впоследствии отправить на graduate.applications@yandex.ru",
         "en": "If unavailable at the time of application should be sent subsequently to graduate.applications@yandex.ru",
+    },
+    "current_file_name_hint": {
+        "ru": "Текущий файл: {filename}. Если новый файл не выбран, останется текущий.",
+        "en": "Current file: {filename}. If no new file is selected, the current one will be kept.",
     },
     "personal_data_consent": {
         "ru": "Согласен на обработку персональных данных",
@@ -125,6 +172,7 @@ TEXTS: dict[str, dict[str, str]] = {
     "modal_close": {"ru": "Закрыть", "en": "Close"},
     "modal_success_title": {"ru": "Заявка сохранена", "en": "Application saved"},
     "submit_application": {"ru": "Сохранить заявку", "en": "Save application"},
+    "submit_application_update": {"ru": "Обновить заявку", "en": "Update application"},
     "required_note": {
         "ru": "Поля, обязательные для заполнения.",
         "en": "Fields marked with * are required.",
@@ -144,6 +192,7 @@ TEXTS: dict[str, dict[str, str]] = {
     },
     "records_empty_admin": {"ru": "В системе пока нет заявок.", "en": "There are no applications in the system yet."},
     "records_empty_action": {"ru": "Перейти к форме регистрации", "en": "Go to the registration form"},
+    "edit_rejected_application": {"ru": "Редактировать заявку", "en": "Edit application"},
     "highlight_status": {"ru": "Статус", "en": "Status"},
     "highlight_validation": {
         "ru": "Автопроверка файла публикации",
@@ -323,6 +372,7 @@ FIELD_LABELS: dict[str, dict[str, str]] = {
     "expert_opinion_file.size_bytes": {"ru": "Экспертное заключение: размер", "en": "Expert report: size"},
     "review_status": {"ru": "Статус", "en": "Status"},
     "admin_comment": {"ru": "Комментарий к заявке", "en": "Application comment"},
+    "comments": {"ru": "Комментарии к заявке", "en": "Application comments"},
     "created_at": {"ru": "Создано", "en": "Created"},
 }
 
@@ -355,7 +405,8 @@ SECTION_LABELS = {
 REVIEW_STATUS_LABELS = {
     REVIEW_STATUSES[0]: {"ru": REVIEW_STATUSES[0], "en": "Under review"},
     REVIEW_STATUSES[1]: {"ru": REVIEW_STATUSES[1], "en": "Accepted"},
-    REVIEW_STATUSES[2]: {"ru": REVIEW_STATUSES[2], "en": "Rejected"},
+    REVIEW_STATUSES[2]: {"ru": REVIEW_STATUSES[2], "en": "Needs revision"},
+    REVIEW_STATUSES[3]: {"ru": REVIEW_STATUSES[3], "en": "Rejected"},
 }
 
 

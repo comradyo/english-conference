@@ -23,7 +23,7 @@ SECTION_OPTIONS = (
     "Гуманитарные науки",
 )
 
-REVIEW_STATUSES = ("На рассмотрении", "Принята", "Отклонена")
+REVIEW_STATUSES = ("На рассмотрении", "Принята", "На доработке", "Отклонена")
 MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
 
 NonEmptyText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
@@ -68,8 +68,8 @@ class ConferenceRegistrationPayload(BaseModel):
     first_name: NonEmptyText
     middle_name: OptionalText | None = None
     place_of_study: NonEmptyText
-    department: NonEmptyText
-    place_of_work: OptionalText | None = None
+    department: OptionalText | None = None
+    place_of_work: NonEmptyText
     job_title: OptionalText | None = None
     phone: PhoneNumber
     email: EmailStr
