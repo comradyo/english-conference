@@ -1,58 +1,174 @@
 services:
-  api:
-    image: ${COMPOSE_PROJECT_NAME}-api:${API_IMAGE_TAG:-latest}
+#  api:
+#    image: ${COMPOSE_PROJECT_NAME}-api:${API_IMAGE_TAG:-latest}
+#    build:
+#      context: ..
+#      dockerfile: docker/api.Dockerfile
+#    restart: unless-stopped
+#    environment:
+#      MONGO_URI: ${MONGO_URI:-mongodb://mongo:27017}
+#      MONGO_DB: ${MONGO_DB:-eng_conference}
+#      MONGO_COLLECTION: ${MONGO_COLLECTION:-submissions}
+#
+#      TILDA_API_KEY_NAME: ${TILDA_API_KEY_NAME:-Authorization}
+#      TILDA_API_KEY_VALUE: ${TILDA_API_KEY_VALUE:-}
+#
+#      LOG_LEVEL: ${LOG_LEVEL:-info}
+#    healthcheck:
+#      test: [ "CMD-SHELL", "curl -fsS http://localhost:8000/health || exit 1" ]
+#      interval: 10s
+#      timeout: 3s
+#      retries: 10
+#      start_period: 10s
+#    ports:
+#      - "8000:8000"
+#    depends_on:
+#      mongo:
+#        condition: service_healthy
+
+  web:
+    image: ${COMPOSE_PROJECT_NAME}-web:${API_IMAGE_TAG:-latest}
     build:
       context: ..
-      dockerfile: docker/api.Dockerfile
+      dockerfile: docker/web.Dockerfile
     restart: unless-stopped
     environment:
       MONGO_URI: ${MONGO_URI:-mongodb://mongo:27017}
       MONGO_DB: ${MONGO_DB:-eng_conference}
-      MONGO_COLLECTION: ${MONGO_COLLECTION:-submissions}
-
-      TILDA_API_KEY_NAME: ${TILDA_API_KEY_NAME:-Authorization}
-      TILDA_API_KEY_VALUE: ${TILDA_API_KEY_VALUE:-}
-
-      LOG_LEVEL: ${LOG_LEVEL:-info}
+      WEB_USERS_COLLECTION: ${WEB_USERS_COLLECTION:-web_users}
+      WEB_REGISTRATIONS_COLLECTION: ${WEB_REGISTRATIONS_COLLECTION:-conference_registrations}
+      WEB_EMAIL_TASKS_COLLECTION: ${WEB_EMAIL_TASKS_COLLECTION:-email_tasks}
+      WEB_PASSWORD_RESET_TOKENS_COLLECTION: ${WEB_PASSWORD_RESET_TOKENS_COLLECTION:-password_reset_tokens}
+      WEB_SESSIONS_COLLECTION: ${WEB_SESSIONS_COLLECTION:-web_sessions}
+      WEB_SESSION_COOKIE_NAME: ${WEB_SESSION_COOKIE_NAME:-conference_session}
+      WEB_SESSION_TTL_HOURS: ${WEB_SESSION_TTL_HOURS:-168}
+      WEB_PASSWORD_RESET_TTL_MINUTES: ${WEB_PASSWORD_RESET_TTL_MINUTES:-30}
+      WEB_CHECKER_API_URL: ${WEB_CHECKER_API_URL:-http://checker-api:8000/validate}
+      WEB_CHECKER_API_TIMEOUT_SEC: ${WEB_CHECKER_API_TIMEOUT_SEC:-30}
+      WEB_ADMIN_EMAILS: ${WEB_ADMIN_EMAILS:-}
     healthcheck:
-      test: [ "CMD-SHELL", "curl -fsS http://localhost:8000/health || exit 1" ]
+      test: [ "CMD-SHELL", "curl -fsS http://localhost:8000/ready || exit 1" ]
       interval: 10s
       timeout: 3s
       retries: 10
       start_period: 10s
-    ports:
-      - "8000:8000"
+#    ports:
+#      - "80:8000"
     depends_on:
       mongo:
         condition: service_healthy
+      checker-api:
+        condition: service_started
 
-  worker:
-    image: ${COMPOSE_PROJECT_NAME}-worker:${API_IMAGE_TAG:-latest}
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+  mailer:
+    image: ${COMPOSE_PROJECT_NAME}-mailer:${API_IMAGE_TAG:-latest}
     build:
       context: ..
-      dockerfile: docker/worker.Dockerfile
+      dockerfile: docker/mailer.Dockerfile
     restart: unless-stopped
     environment:
       MONGO_URI: ${MONGO_URI:-mongodb://mongo:27017}
       MONGO_DB: ${MONGO_DB:-eng_conference}
-      MONGO_COLLECTION: ${MONGO_COLLECTION:-submissions}
-
-      POLL_INTERVAL_SEC: ${POLL_INTERVAL_SEC:-2}
-      LOCK_TIMEOUT_SEC: ${LOCK_TIMEOUT_SEC:-300}
-      MAX_ATTEMPTS: ${MAX_ATTEMPTS:-5}
-
-      DOWNLOAD_DIR: ${DOWNLOAD_DIR:-/data/downloads}
-      WORKER_ID: ${WORKER_ID:-downloader-1}
+      WEB_EMAIL_TASKS_COLLECTION: ${WEB_EMAIL_TASKS_COLLECTION:-email_tasks}
+      WEB_NOTIFICATION_EMAIL_SENDER: ${WEB_NOTIFICATION_EMAIL_SENDER}
+      WEB_NOTIFICATION_EMAIL_PASSWORD: ${WEB_NOTIFICATION_EMAIL_PASSWORD}
+      WEB_NOTIFICATION_EMAIL_SMTP_HOST: ${WEB_NOTIFICATION_EMAIL_SMTP_HOST}
+      WEB_NOTIFICATION_EMAIL_SMTP_PORT: ${WEB_NOTIFICATION_EMAIL_SMTP_PORT}
+      WEB_NOTIFICATION_EMAIL_USE_SSL: ${WEB_NOTIFICATION_EMAIL_USE_SSL}
+      MAILER_POLL_INTERVAL_SEC: ${MAILER_POLL_INTERVAL_SEC:-5}
+      MAILER_RETRY_DELAY_SEC: ${MAILER_RETRY_DELAY_SEC:-60}
+      MAILER_MAX_ATTEMPTS: ${MAILER_MAX_ATTEMPTS:-5}
       LOG_LEVEL: ${LOG_LEVEL:-info}
-
-      YANDEX_API_URL: ${YANDEX_API_URL:-https://cloud-api.yandex.net/v1/disk/resources/download/}
-      YANDEX_API_TOKEN: ${YANDEX_API_TOKEN:-}
-      YANDEX_DISK_PATH: ${YANDEX_DISK_PATH:-Приложения/Tilda Publishing and Disk/English_test/}
-    volumes:
-      - downloads:/data/downloads
     depends_on:
       mongo:
         condition: service_healthy
+
+  checker:
+    image: ${COMPOSE_PROJECT_NAME}-checker:${API_IMAGE_TAG:-latest}
+    build:
+      context: ..
+      dockerfile: docker/checker.Dockerfile
+    restart: unless-stopped
+    environment:
+      MONGO_URI: ${MONGO_URI:-mongodb://mongo:27017}
+      MONGO_DB: ${MONGO_DB:-eng_conference}
+      WEB_REGISTRATIONS_COLLECTION: ${WEB_REGISTRATIONS_COLLECTION:-conference_registrations}
+      CHECKER_POLL_INTERVAL_SEC: ${CHECKER_POLL_INTERVAL_SEC:-5}
+      CHECKER_PROCESSING_TIMEOUT_SEC: ${CHECKER_PROCESSING_TIMEOUT_SEC:-300}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+  checker-api:
+    image: ${COMPOSE_PROJECT_NAME}-checker:${API_IMAGE_TAG:-latest}
+    build:
+      context: ..
+      dockerfile: docker/checker.Dockerfile
+    restart: unless-stopped
+    command: ["uvicorn", "main:api_app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+
+  mongo-backup:
+    image: ${COMPOSE_PROJECT_NAME}-mongo-backup:${API_IMAGE_TAG:-latest}
+    build:
+      context: ..
+      dockerfile: docker/backup.Dockerfile
+    restart: unless-stopped
+    environment:
+      MONGO_URI: ${MONGO_URI:-mongodb://mongo:27017}
+      MONGO_BACKUP_INTERVAL_SEC: ${MONGO_BACKUP_INTERVAL_SEC:-86400}
+      MONGO_BACKUP_TARGET_DIR: /backups
+      MONGO_BACKUP_FILE_PREFIX: ${MONGO_BACKUP_FILE_PREFIX:-mongo}
+      MONGO_BACKUP_KEEP_LAST: ${MONGO_BACKUP_KEEP_LAST:-14}
+    volumes:
+      - ${MONGO_BACKUP_HOST_DIR:-../mongo-backups}:/backups
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+#  worker:
+#    image: ${COMPOSE_PROJECT_NAME}-worker:${API_IMAGE_TAG:-latest}
+#    build:
+#      context: ..
+#      dockerfile: docker/worker.Dockerfile
+#    restart: unless-stopped
+#    environment:
+#      MONGO_URI: ${MONGO_URI:-mongodb://mongo:27017}
+#      MONGO_DB: ${MONGO_DB:-eng_conference}
+#      MONGO_COLLECTION: ${MONGO_COLLECTION:-submissions}
+#
+#      POLL_INTERVAL_SEC: ${POLL_INTERVAL_SEC:-2}
+#      LOCK_TIMEOUT_SEC: ${LOCK_TIMEOUT_SEC:-300}
+#      MAX_ATTEMPTS: ${MAX_ATTEMPTS:-5}
+#
+#      DOWNLOAD_DIR: ${DOWNLOAD_DIR:-/data/downloads}
+#      WORKER_ID: ${WORKER_ID:-downloader-1}
+#      LOG_LEVEL: ${LOG_LEVEL:-info}
+#
+#      YANDEX_API_URL: ${YANDEX_API_URL:-https://cloud-api.yandex.net/v1/disk/resources/download/}
+#      YANDEX_API_TOKEN: ${YANDEX_API_TOKEN:-}
+#      YANDEX_DISK_PATH: ${YANDEX_DISK_PATH:-Приложения/Tilda Publishing and Disk/English_test/}
+#    volumes:
+#      - downloads:/data/downloads
+#    depends_on:
+#      mongo:
+#        condition: service_healthy
 
   mongo:
     image: mongo:8
@@ -69,5 +185,7 @@ services:
       retries: 10
 
 volumes:
+  caddy-data:
+  caddy-config:
   mongo-data:
   downloads:
