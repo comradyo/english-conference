@@ -31,6 +31,18 @@ TEXTS: dict[str, dict[str, str]] = {
         "ru": "Комментарий и статус заявки сохранены.",
         "en": "The comment and application status have been saved.",
     },
+    "notice_comment_added": {
+        "ru": "Комментарий добавлен.",
+        "en": "The comment has been added.",
+    },
+    "notice_comment_empty": {
+        "ru": "Пустой комментарий не сохранён.",
+        "en": "An empty comment was not saved.",
+    },
+    "notice_comment_add_failed": {
+        "ru": "Не удалось добавить комментарий к заявке.",
+        "en": "Failed to add a comment to the application.",
+    },
     "notice_registration_updated": {
         "ru": "Заявка обновлена и отправлена на повторное рассмотрение.",
         "en": "The application has been updated and resubmitted for review.",
@@ -53,6 +65,19 @@ TEXTS: dict[str, dict[str, str]] = {
     "no_remarks": {"ru": "Нет замечаний", "en": "No remarks"},
     "comment_not_added": {"ru": "Комментарий пока не добавлен.", "en": "No comment has been added yet."},
     "comment_not_specified": {"ru": "Комментарий не указан.", "en": "No comment provided."},
+    "comment_add_label": {"ru": "Добавить комментарий", "en": "Add comment"},
+    "comment_submit_button": {"ru": "Отправить комментарий", "en": "Send comment"},
+    "admin_comment_placeholder": {
+        "ru": "Добавьте комментарий для автора заявки",
+        "en": "Add a comment for the application author",
+    },
+    "author_comment_placeholder": {
+        "ru": "Напишите комментарий к заявке",
+        "en": "Write a comment to the application",
+    },
+    "comment_author_admin": {"ru": "Администратор", "en": "Administrator"},
+    "comment_author_author": {"ru": "Автор заявки", "en": "Application author"},
+    "comment_author_unknown": {"ru": "Участник", "en": "Participant"},
     "unnamed_record": {"ru": "Заявка без имени", "en": "Application without a name"},
     "unnamed_person": {"ru": "Без имени", "en": "Unnamed"},
     "without_section": {"ru": "Без секции", "en": "No section"},
@@ -347,6 +372,7 @@ FIELD_LABELS: dict[str, dict[str, str]] = {
     "expert_opinion_file.size_bytes": {"ru": "Экспертное заключение: размер", "en": "Expert report: size"},
     "review_status": {"ru": "Статус", "en": "Status"},
     "admin_comment": {"ru": "Комментарий к заявке", "en": "Application comment"},
+    "comments": {"ru": "Комментарии к заявке", "en": "Application comments"},
     "created_at": {"ru": "Создано", "en": "Created"},
 }
 

@@ -78,6 +78,12 @@ button {{ border:none; cursor:pointer; background:linear-gradient(135deg, #0f595
 .record-highlight-body {{ font-size:1.08rem; font-weight:700; line-height:1.45; }}
 .record-highlight-comment .record-highlight-body {{ font-size:1.02rem; font-weight:600; }}
 .record-highlight-validation .record-highlight-body {{ font-size:1rem; font-weight:600; }}
+.comment-thread {{ display:grid; gap:10px; }}
+.comment-item {{ border:1px solid var(--line); border-radius:12px; background:#fff; padding:10px 12px; }}
+.comment-meta {{ color:var(--muted); font-size:.86rem; font-weight:700; margin-bottom:6px; }}
+.comment-text {{ white-space:normal; }}
+.record-comment-form {{ margin-top:14px; gap:10px; }}
+.record-comment-form textarea {{ min-height:84px; }}
 .record-actions {{ margin:0; }}
 .section-group {{ border:1px solid var(--line); border-radius:18px; background:#fffdfa; overflow:hidden; }}
 .section-group + .section-group {{ margin-top:16px; }}
@@ -293,6 +299,64 @@ def render_highlight_block(label: str, body_html: str, *, extra_class: str = "")
     )
 
 
+def registration_comments(record: dict[str, Any]) -> list[dict[str, Any]]:
+    comments = record.get("comments")
+    if not isinstance(comments, list):
+        return []
+
+    normalized: list[dict[str, Any]] = []
+    for item in comments:
+        if not isinstance(item, dict):
+            continue
+        comment_text = str(item.get("text") or "").strip()
+        if not comment_text:
+            continue
+        normalized.append(
+            {
+                "author_role": str(item.get("author_role") or "").strip().lower(),
+                "author_email": str(item.get("author_email") or "").strip(),
+                "text": comment_text,
+                "created_at": item.get("created_at"),
+            }
+        )
+    return normalized
+
+
+def comment_author_label(comment: dict[str, Any], *, lang: str = DEFAULT_LANGUAGE) -> str:
+    role = str(comment.get("author_role") or "").strip().lower()
+    if role == "admin":
+        base_label = text(lang, "comment_author_admin")
+    elif role == "author":
+        base_label = text(lang, "comment_author_author")
+    else:
+        base_label = text(lang, "comment_author_unknown")
+
+    author_email = str(comment.get("author_email") or "").strip()
+    if not author_email:
+        return base_label
+    return f"{base_label} ({author_email})"
+
+
+def render_comments_thread_html(record: dict[str, Any], *, lang: str = DEFAULT_LANGUAGE) -> str:
+    comments = registration_comments(record)
+    if not comments:
+        return escape(text(lang, "comment_not_added"))
+
+    items_html: list[str] = []
+    for comment in comments:
+        created_at = comment.get("created_at")
+        created_text = format_dt(created_at, lang=lang) if isinstance(created_at, datetime) else text(lang, "not_specified")
+        comment_text_html = escape(str(comment.get("text") or "")).replace("\n", "<br>")
+        items_html.append(
+            '<article class="comment-item">'
+            f'<div class="comment-meta">{escape(comment_author_label(comment, lang=lang))} | {escape(created_text)}</div>'
+            f'<div class="comment-text">{comment_text_html}</div>'
+            "</article>"
+        )
+
+    return f'<div class="comment-thread">{"".join(items_html)}</div>'
+
+
 def field_label(path: str, *, lang: str = DEFAULT_LANGUAGE) -> str:
     return localized_field_label(lang, path)
 
@@ -371,7 +435,8 @@ def render_object_fields(record: dict[str, Any], *, lang: str = DEFAULT_LANGUAGE
                 append_field(f"{path}.{nested_key}", nested_value)
             return
         if path in {'publication_file.content_type', 'expert_opinion_file.content_type', 'publication_file.filename',
-                    'expert_opinion_file.filename', 'last_name', 'first_name', 'middle_name', 'owner_email'}:
+                    'expert_opinion_file.filename', 'last_name', 'first_name', 'middle_name', 'owner_email', 'comments',
+                    'admin_comment'}:
             return
         if path == "publication_validation.status":
             status_value = validation_status_label(lang, str(value or ""))
@@ -380,10 +445,6 @@ def render_object_fields(record: dict[str, Any], *, lang: str = DEFAULT_LANGUAGE
         if path == "review_status":
             status = str(value or REVIEW_STATUSES[0])
             rows.append(meta_html_row(field_label(path, lang=lang), render_status_badge(status, lang=lang)))
-            return
-        if path == "admin_comment":
-            comment_text = str(value or "").strip() or text(lang, "comment_not_added")
-            rows.append(meta_row(field_label(path, lang=lang), comment_text))
             return
         if isinstance(value, datetime):
             rows.append(meta_row(field_label(path, lang=lang), format_dt(value, lang=lang)))
@@ -748,7 +809,7 @@ def render_record_card(record: dict[str, Any], *, admin_mode: bool, lang: str = 
     publication_validation = record.get("publication_validation") or {}
     review_status = str(record.get("review_status") or REVIEW_STATUSES[0])
     record_id = str(record.get("_id") or "").strip()
-    comment_text = str(record.get("admin_comment") or "").strip() or text(lang, "comment_not_added")
+    comments_html = render_comments_thread_html(record, lang=lang)
     validation_summary = validation_summary_text(publication_validation, lang=lang)
     full_name = " ".join(
         part
@@ -790,10 +851,10 @@ def render_record_card(record: dict[str, Any], *, admin_mode: bool, lang: str = 
     if admin_mode:
         rows.insert(0, meta_html_row(text(lang, "highlight_status"), render_status_badge(review_status, lang=lang)))
         rows.append(meta_row(text(lang, "owner_account_email"), str(record.get("owner_email", ""))))
-        comment_block = meta_row(text(lang, "highlight_comment"), comment_text)
+        comment_block = render_highlight_block(text(lang, "highlight_comment"), comments_html, extra_class="record-highlight-comment")
         highlights_html = ""
+        author_comment_form_html = ""
     else:
-        comment_html = escape(comment_text).replace("\n", "<br>")
         edit_action_html = ""
         if review_status == REVIEW_STATUSES[2] and record_id:
             edit_action_html = (
@@ -806,11 +867,19 @@ def render_record_card(record: dict[str, Any], *, admin_mode: bool, lang: str = 
             f'{render_highlight_block(text(lang, "highlight_status"), render_status_badge(review_status, large=True, lang=lang))}'
             f"{edit_action_html}"
             f'{render_highlight_block(text(lang, "highlight_validation"), render_validation_details_html(publication_validation, lang=lang), extra_class="record-highlight-validation")}'
-            f'{render_highlight_block(text(lang, "highlight_comment"), comment_html, extra_class="record-highlight-comment")}'
+            f'{render_highlight_block(text(lang, "highlight_comment"), comments_html, extra_class="record-highlight-comment")}'
             "</section>"
         )
         comment_block = ""
-    return f'<article class="card"><div class="card-title"><strong>{escape(full_name or text(lang, "unnamed_record"))}</strong></div>{highlights_html}<div class="meta">{"".join(rows)}{comment_block}</div></article>'
+        author_comment_form_html = ""
+        if record_id:
+            author_comment_form_html = (
+                f'<form method="post" action="/my-registrations/comment/{escape(record_id, quote=True)}" class="record-comment-form">'
+                f'<label>{escape(text(lang, "comment_add_label"))}<textarea name="comment_text" placeholder="{escape(text(lang, "author_comment_placeholder"), quote=True)}"></textarea></label>'
+                f'<button type="submit">{escape(text(lang, "comment_submit_button"))}</button>'
+                "</form>"
+            )
+    return f'<article class="card"><div class="card-title"><strong>{escape(full_name or text(lang, "unnamed_record"))}</strong></div>{highlights_html}<div class="meta">{"".join(rows)}{comment_block}</div>{author_comment_form_html}</article>'
 
 
 def render_admin_table(
@@ -878,6 +947,7 @@ def render_admin_table(
                 f'<div>{escape(str(record.get("phone", "")))}</div></div>'
             )
             record_fields_html = render_object_fields(record, lang=lang)
+            comments_html = render_comments_thread_html(record, lang=lang)
 
             rows_html.append(
                 f"""
@@ -897,11 +967,12 @@ def render_admin_table(
                   <h2>{escape(full_name or text(lang, "unnamed_person"))}</h2>
                   <p>{escape(text(lang, "admin_tools_desc"))}</p>
                   <div class="meta">{record_fields_html}</div>
+                  {render_highlight_block(text(lang, "highlight_comment"), comments_html, extra_class="record-highlight-comment")}
                   <div class="admin-tools">
                     {downloads_html}
                     <form method="post" action="/all_applications/comment/{record_id}">
                       <label>{escape(text(lang, "highlight_status"))}<select name="review_status">{status_options}</select></label>
-                      <label>{escape(text(lang, "highlight_comment"))}<textarea name="admin_comment">{escape(str(record.get("admin_comment") or ""))}</textarea></label>
+                      <label>{escape(text(lang, "comment_add_label"))}<textarea name="comment_text" placeholder="{escape(text(lang, "admin_comment_placeholder"), quote=True)}"></textarea></label>
                       <button type="submit">{escape(text(lang, "admin_save"))}</button>
                     </form>
                   </div>

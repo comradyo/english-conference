@@ -84,6 +84,20 @@ def file_document(upload: UploadFile | None, content: bytes | None) -> dict[str,
     }
 
 
+def registration_comment_entry(
+    *,
+    author_role: str,
+    author_email: str,
+    comment_text: str,
+) -> dict[str, object]:
+    return {
+        "author_role": author_role,
+        "author_email": normalize_email(author_email),
+        "text": comment_text,
+        "created_at": now_utc(),
+    }
+
+
 def conference_form_values(
     *,
     last_name: str,
@@ -310,7 +324,7 @@ async def _save_admin_comment_impl(
     registration_id: str,
     request: Request,
     review_status: str,
-    admin_comment: str,
+    comment_text: str,
 ):
     lang = request_language(request)
     current_user, response = await require_admin(request, lambda user: render_forbidden(user, lang=lang))
@@ -355,10 +369,25 @@ async def _save_admin_comment_impl(
             status_code=404,
         )
 
-    trimmed_comment = admin_comment.strip()
+    trimmed_comment = comment_text.strip()
+    appended_comment = None
+    update_doc: dict[str, dict[str, object]] = {
+        "$set": {
+            "review_status": review_status,
+            "updated_at": now_utc(),
+        }
+    }
+    if trimmed_comment:
+        appended_comment = registration_comment_entry(
+            author_role="admin",
+            author_email=str(current_user["email"]),
+            comment_text=trimmed_comment,
+        )
+        update_doc["$push"] = {"comments": appended_comment}
+
     update_result = await request.app.state.registrations_collection.update_one(
         {"_id": object_id},
-        {"$set": {"admin_comment": trimmed_comment, "review_status": review_status}},
+        update_doc,
     )
     if update_result.matched_count == 0:
         return build_error_page(
@@ -372,7 +401,11 @@ async def _save_admin_comment_impl(
         )
 
     updated_record = dict(record)
-    updated_record["admin_comment"] = trimmed_comment
+    current_comments = record.get("comments")
+    updated_comments = [item for item in current_comments if isinstance(item, dict)] if isinstance(current_comments, list) else []
+    if appended_comment is not None:
+        updated_comments.append(appended_comment)
+    updated_record["comments"] = updated_comments
     updated_record["review_status"] = review_status
     back_link_html = (
         f'<a href="/all_applications?selected={registration_id}">'
@@ -864,7 +897,7 @@ async def submit_conference_registration(
             "expert_opinion_file": file_document(expert_opinion_file, expert_opinion_content),
             "publication_validation": build_initial_publication_validation(),
             "review_status": PENDING_REVIEW_STATUS,
-            "admin_comment": "",
+            "comments": [],
             "created_at": now_utc(),
         }
     )
@@ -1018,7 +1051,6 @@ async def update_conference_registration(
         "foreign_language_consultant": payload.foreign_language_consultant,
         "publication_validation": build_initial_publication_validation(),
         "review_status": PENDING_REVIEW_STATUS,
-        "admin_comment": "",
         "updated_at": now_utc(),
     }
     if publication_file_content is not None:
@@ -1038,6 +1070,45 @@ async def update_conference_registration(
         return localized_redirect(request, "/my-registrations?notice=edit_not_allowed", status_code=303)
 
     return localized_redirect(request, "/my-registrations?notice=registration_updated", status_code=303)
+
+
+@app.post("/my-registrations/comment/{registration_id}", include_in_schema=False)
+async def save_author_comment(
+    registration_id: str,
+    request: Request,
+    comment_text: str = Form(""),
+):
+    current_user, response = await require_user(request)
+    if response:
+        return response
+
+    trimmed_comment = comment_text.strip()
+    if not trimmed_comment:
+        return localized_redirect(request, "/my-registrations?notice=comment_empty", status_code=303)
+
+    object_id = parse_object_id(registration_id)
+    if object_id is None:
+        return localized_redirect(request, "/my-registrations?notice=comment_add_failed", status_code=303)
+
+    appended_comment = registration_comment_entry(
+        author_role="author",
+        author_email=str(current_user["email"]),
+        comment_text=trimmed_comment,
+    )
+    update_result = await request.app.state.registrations_collection.update_one(
+        {
+            "_id": object_id,
+            "owner_user_id": current_user["_id"],
+        },
+        {
+            "$push": {"comments": appended_comment},
+            "$set": {"updated_at": now_utc()},
+        },
+    )
+    if update_result.matched_count == 0:
+        return localized_redirect(request, "/my-registrations?notice=comment_add_failed", status_code=303)
+
+    return localized_redirect(request, "/my-registrations?notice=comment_added", status_code=303)
 
 
 @app.get("/my-registrations")
@@ -1107,9 +1178,9 @@ async def save_admin_comment(
     registration_id: str,
     request: Request,
     review_status: str = Form(""),
-    admin_comment: str = Form(""),
+    comment_text: str = Form(""),
 ):
-    return await _save_admin_comment_impl(registration_id, request, review_status, admin_comment)
+    return await _save_admin_comment_impl(registration_id, request, review_status, comment_text)
 
 
 @app.get("/health", include_in_schema=False)
