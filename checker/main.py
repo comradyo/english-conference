@@ -98,7 +98,7 @@ async def validate_file_api(file: UploadFile = File(...)) -> PlainTextResponse:
         LOGGER.exception("API validation failed for %s", filename)
         return PlainTextResponse(f"Не удалось выполнить проверку файла: {exc}", status_code=500)
 
-    return PlainTextResponse(format_validation_result_text(errors_ru))
+    return PlainTextResponse(format_validation_result_text(errors_ru, errors_eng))
 
 
 async def ensure_indexes(collection: AsyncIOMotorCollection) -> None:
@@ -147,7 +147,6 @@ async def mark_validation_complete(
     collection: AsyncIOMotorCollection,
     registration_id: Any,
     errors: list[str],
-    errors_eng: list[str],
 ) -> None:
     checked_at = now_utc()
     if errors:
@@ -240,7 +239,7 @@ async def process_registrations(settings: Settings) -> None:
                 await mark_validation_error(collection, registration_id, error=str(exc))
             else:
                 LOGGER.info("Validation finished for registration %s", registration_id)
-                await mark_validation_complete(collection, registration_id, errors, errors_eng)
+                await mark_validation_complete(collection, registration_id, errors + errors_eng)
     finally:
         client.close()
 
