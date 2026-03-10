@@ -87,9 +87,10 @@ button {{ border:none; cursor:pointer; background:linear-gradient(135deg, #0f595
 .records-table th, .records-table td {{ padding:12px 10px; vertical-align:top; border-top:1px solid var(--line); text-align:left; }}
 .records-table th {{ color:var(--muted); font-size:.9rem; font-weight:700; }}
 .records-table tbody tr:hover {{ background:rgba(15,89,89,.03); }}
-.status-pill {{ display:inline-block; padding:6px 10px; border-radius:999px; background:#ece7cf; color:#6d5200; font-weight:700; }}
-.status-pill.status-pending {{ background:#ece7cf; color:#6d5200; }}
+.status-pill {{ display:inline-block; padding:6px 10px; border-radius:999px; background:#e8ebef; color:#4b5563; font-weight:700; }}
+.status-pill.status-pending {{ background:#e8ebef; color:#4b5563; }}
 .status-pill.status-accepted {{ background:#dff3e3; color:#155728; }}
+.status-pill.status-revision {{ background:#f6dc6b; color:#5a4300; }}
 .status-pill.status-rejected {{ background:#f8dddd; color:#7f2020; }}
 .status-pill.status-pill-large {{ padding:10px 14px; font-size:1.02rem; }}
 .admin-tools {{ display:grid; gap:10px; min-width:260px; }}
@@ -267,6 +268,7 @@ def status_tone_class(status: str) -> str:
     mapping = {
         "На рассмотрении": "status-pending",
         "Принята": "status-accepted",
+        "На доработке": "status-revision",
         "Отклонена": "status-rejected",
     }
     return mapping.get(status, "status-pending")
@@ -647,12 +649,12 @@ def render_conference_form(
           <label><span class="field-caption">{escape(field_label("first_name", lang=lang))} <span class="required-mark">*</span></span><input type="text" name="first_name" placeholder="{escape(text(lang, "placeholder_first_name"), quote=True)}" required value="{field_value(values, 'first_name')}"></label>
           <label><span class="field-caption">{escape(field_label("middle_name", lang=lang))}</span><input type="text" name="middle_name" value="{field_value(values, 'middle_name')}"></label>
           <label><span class="field-caption">{escape(field_label("place_of_study", lang=lang))} <span class="required-mark">*</span></span><input type="text" name="place_of_study" placeholder="{escape(text(lang, "placeholder_place_of_study"), quote=True)}" required value="{field_value(values, 'place_of_study')}"></label>
-          <label><span class="field-caption">{escape(field_label("department", lang=lang))} <span class="required-mark">*</span></span><input type="text" name="department" placeholder="{escape(text(lang, "placeholder_department"), quote=True)}" required value="{field_value(values, 'department')}"></label>
-          <label><span class="field-caption">{escape(field_label("place_of_work", lang=lang))}</span><input type="text" name="place_of_work" value="{field_value(values, 'place_of_work')}"></label>
+          <label><span class="field-caption">{escape(field_label("department", lang=lang))}</span><input type="text" name="department" placeholder="{escape(text(lang, "placeholder_department"), quote=True)}" value="{field_value(values, 'department')}"></label>
+          <label><span class="field-caption">{escape(field_label("place_of_work", lang=lang))} <span class="required-mark">*</span></span><input type="text" name="place_of_work" required value="{field_value(values, 'place_of_work')}"></label>
           <label><span class="field-caption">{escape(field_label("job_title", lang=lang))}</span><input type="text" name="job_title" value="{field_value(values, 'job_title')}"></label>
           <label><span class="field-caption">{escape(field_label("phone", lang=lang))} <span class="required-mark">*</span></span><input type="tel" name="phone" placeholder="{escape(text(lang, "placeholder_phone"), quote=True)}" required value="{field_value(values, 'phone')}"></label>
           <label><span class="field-caption">{escape(text(lang, "auth_email"))} <span class="required-mark">*</span></span><input type="email" name="email" placeholder="{escape(text(lang, "placeholder_email"), quote=True)}" required value="{field_value(values, 'email')}"></label>
-          <label><span class="field-caption">{escape(field_label("participation", lang=lang))} <span class="required-mark">*</span></span>{render_select('participation', PARTICIPATION_OPTIONS, values.get('participation'), lang=lang)}</label>
+          <label><span class="field-caption">{escape(field_label("participation", lang=lang))} <span class="required-mark">*</span></span>{render_select('participation', PARTICIPATION_OPTIONS, values.get('participation'), lang=lang)}<span class="field-hint">{escape(text(lang, "hint_participation_student_moscow"))}</span></label>
           <label><span class="field-caption">{escape(field_label("section", lang=lang))} <span class="required-mark">*</span></span>{render_select('section', SECTION_OPTIONS, values.get('section'), lang=lang)}</label>
           <label><span class="field-caption">{escape(field_label("publication_title", lang=lang))} <span class="required-mark">*</span></span><input type="text" name="publication_title" required value="{field_value(values, 'publication_title')}"></label>
           <label><span class="field-caption">{escape(field_label("foreign_language_consultant", lang=lang))} <span class="required-mark">*</span></span><input type="text" name="foreign_language_consultant" required value="{field_value(values, 'foreign_language_consultant')}"></label>
@@ -702,7 +704,7 @@ def _legacy_render_record_card(record: dict[str, Any], *, admin_mode: bool) -> s
         meta_row("Имя", str(record.get("first_name", ""))),
         meta_row("Отчество", optional_value(record.get("middle_name"))),
         meta_row("Место учёбы", str(record.get("place_of_study", ""))),
-        meta_row("Кафедра", str(record.get("department", ""))),
+        meta_row("Кафедра", optional_value(record.get("department"))),
         meta_row("Место работы", optional_value(record.get("place_of_work"))),
         meta_row("Должность", optional_value(record.get("job_title"))),
         meta_row("Телефон для связи", str(record.get("phone", ""))),
@@ -762,7 +764,7 @@ def render_record_card(record: dict[str, Any], *, admin_mode: bool, lang: str = 
         meta_row(field_label("first_name", lang=lang), str(record.get("first_name", ""))),
         meta_row(field_label("middle_name", lang=lang), optional_value(record.get("middle_name"), lang=lang)),
         meta_row(field_label("place_of_study", lang=lang), str(record.get("place_of_study", ""))),
-        meta_row(field_label("department", lang=lang), str(record.get("department", ""))),
+        meta_row(field_label("department", lang=lang), optional_value(record.get("department"), lang=lang)),
         meta_row(field_label("place_of_work", lang=lang), optional_value(record.get("place_of_work"), lang=lang)),
         meta_row(field_label("job_title", lang=lang), optional_value(record.get("job_title"), lang=lang)),
         meta_row(field_label("phone", lang=lang), str(record.get("phone", ""))),

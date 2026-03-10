@@ -57,7 +57,7 @@ from state import lifespan
 app = FastAPI(title="Conference Personal Cabinet", lifespan=lifespan)
 
 PENDING_REVIEW_STATUS = REVIEW_STATUSES[0]
-REJECTED_REVIEW_STATUS = REVIEW_STATUSES[2]
+REVISION_REVIEW_STATUS = REVIEW_STATUSES[2]
 
 
 def with_language(request: Request, response):
@@ -142,7 +142,7 @@ def registration_file_name(record: dict[str, object], field_name: str) -> str:
     return str(file_info.get("filename") or "").strip()
 
 
-async def find_rejected_registration_for_user(
+async def find_revision_registration_for_user(
     request: Request,
     *,
     registration_id: str,
@@ -155,7 +155,7 @@ async def find_rejected_registration_for_user(
         {
             "_id": object_id,
             "owner_user_id": owner_user_id,
-            "review_status": REJECTED_REVIEW_STATUS,
+            "review_status": REVISION_REVIEW_STATUS,
         },
         {"publication_file.data": 0, "expert_opinion_file.data": 0},
     )
@@ -695,7 +695,7 @@ async def edit_conference_registration_page(
     if response:
         return response
 
-    existing_record = await find_rejected_registration_for_user(
+    existing_record = await find_revision_registration_for_user(
         request,
         registration_id=registration_id,
         owner_user_id=current_user["_id"],
@@ -762,8 +762,8 @@ async def submit_conference_registration(
     first_name: str = Form(...),
     middle_name: str = Form(""),
     place_of_study: str = Form(...),
-    department: str = Form(...),
-    place_of_work: str = Form(""),
+    department: str = Form(""),
+    place_of_work: str = Form(...),
     job_title: str = Form(""),
     phone: str = Form(...),
     email: str = Form(...),
@@ -780,7 +780,7 @@ async def submit_conference_registration(
         return response
 
     middle_name_value = optional_form_value(middle_name)
-    place_of_work_value = optional_form_value(place_of_work)
+    department_value = optional_form_value(department)
     job_title_value = optional_form_value(job_title)
     form_values = conference_form_values(
         last_name=last_name,
@@ -804,8 +804,8 @@ async def submit_conference_registration(
             first_name=first_name,
             middle_name=middle_name_value,
             place_of_study=place_of_study,
-            department=department,
-            place_of_work=place_of_work_value,
+            department=department_value,
+            place_of_work=place_of_work,
             job_title=job_title_value,
             phone=phone,
             email=normalize_email(email),
@@ -887,8 +887,8 @@ async def update_conference_registration(
     first_name: str = Form(...),
     middle_name: str = Form(""),
     place_of_study: str = Form(...),
-    department: str = Form(...),
-    place_of_work: str = Form(""),
+    department: str = Form(""),
+    place_of_work: str = Form(...),
     job_title: str = Form(""),
     phone: str = Form(...),
     email: str = Form(...),
@@ -904,7 +904,7 @@ async def update_conference_registration(
     if response:
         return response
 
-    existing_record = await find_rejected_registration_for_user(
+    existing_record = await find_revision_registration_for_user(
         request,
         registration_id=registration_id,
         owner_user_id=current_user["_id"],
@@ -931,7 +931,7 @@ async def update_conference_registration(
     existing_expert_file_name = registration_file_name(existing_record, "expert_opinion_file")
 
     middle_name_value = optional_form_value(middle_name)
-    place_of_work_value = optional_form_value(place_of_work)
+    department_value = optional_form_value(department)
     job_title_value = optional_form_value(job_title)
 
     try:
@@ -940,8 +940,8 @@ async def update_conference_registration(
             first_name=first_name,
             middle_name=middle_name_value,
             place_of_study=place_of_study,
-            department=department,
-            place_of_work=place_of_work_value,
+            department=department_value,
+            place_of_work=place_of_work,
             job_title=job_title_value,
             phone=phone,
             email=normalize_email(email),
@@ -1030,7 +1030,7 @@ async def update_conference_registration(
         {
             "_id": existing_record["_id"],
             "owner_user_id": current_user["_id"],
-            "review_status": REJECTED_REVIEW_STATUS,
+            "review_status": REVISION_REVIEW_STATUS,
         },
         {"$set": update_fields},
     )

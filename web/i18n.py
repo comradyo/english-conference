@@ -36,8 +36,8 @@ TEXTS: dict[str, dict[str, str]] = {
         "en": "The application has been updated and resubmitted for review.",
     },
     "notice_edit_not_allowed": {
-        "ru": "Редактирование доступно только для отклонённых заявок.",
-        "en": "Editing is available only for rejected applications.",
+        "ru": "Редактирование доступно только для заявок со статусом «На доработке».",
+        "en": "Editing is available only for applications with the \"Needs revision\" status.",
     },
     "notice_password_reset_email_queued": {
         "ru": "Если аккаунт с таким email существует, мы отправили ссылку для смены пароля.",
@@ -116,8 +116,8 @@ TEXTS: dict[str, dict[str, str]] = {
         "en": "Preliminary publication file validation",
     },
     "precheck_desc": {
-        "ru": "Загрузите .docx-файл, чтобы проверить его перед отправкой основной заявки.",
-        "en": "Upload a .docx file to validate it before submitting the main application.",
+        "ru": "Вы можете загрузить .docx-файл, чтобы проверить его перед отправкой основной заявки.",
+        "en": "You can upload a .docx file to validate it before submitting the main application.",
     },
     "precheck_result": {"ru": "Результат проверки", "en": "Validation result"},
     "precheck_button": {"ru": "Проверить файл", "en": "Validate file"},
@@ -128,6 +128,10 @@ TEXTS: dict[str, dict[str, str]] = {
     "placeholder_phone": {"ru": "+79001000102", "en": "+79001000102"},
     "placeholder_email": {"ru": "example@bmstu.ru", "en": "example@bmstu.ru"},
     "hint_publication_file": {"ru": "Формат docx, размер <10Мб", "en": "docx, <10Мб"},
+    "hint_participation_student_moscow": {
+        "ru": "Для студентов московских ВУЗов возможно только выступление с презентацией.",
+        "en": "For students of Moscow universities only oral presentation participation is allowed.",
+    },
     "hint_expert_opinion_file": {
         "ru": "При отсутствии на момент подачи заявки необходимо впоследствии отправить на graduate.applications@yandex.ru",
         "en": "If unavailable at the time of application should be sent subsequently to graduate.applications@yandex.ru",
@@ -375,7 +379,8 @@ SECTION_LABELS = {
 REVIEW_STATUS_LABELS = {
     REVIEW_STATUSES[0]: {"ru": REVIEW_STATUSES[0], "en": "Under review"},
     REVIEW_STATUSES[1]: {"ru": REVIEW_STATUSES[1], "en": "Accepted"},
-    REVIEW_STATUSES[2]: {"ru": REVIEW_STATUSES[2], "en": "Rejected"},
+    REVIEW_STATUSES[2]: {"ru": REVIEW_STATUSES[2], "en": "Needs revision"},
+    REVIEW_STATUSES[3]: {"ru": REVIEW_STATUSES[3], "en": "Rejected"},
 }
 
 

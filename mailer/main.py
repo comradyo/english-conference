@@ -21,6 +21,7 @@ MOSCOW_TZ = timezone(timedelta(hours=3), name="UTC+3")
 REVIEW_STATUS_EN = {
     "На рассмотрении": "Under review",
     "Принята": "Accepted",
+    "На доработке": "Needs revision",
     "Отклонена": "Rejected",
 }
 
