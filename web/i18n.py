@@ -31,6 +31,14 @@ TEXTS: dict[str, dict[str, str]] = {
         "ru": "Комментарий и статус заявки сохранены.",
         "en": "The comment and application status have been saved.",
     },
+    "notice_registration_updated": {
+        "ru": "Заявка обновлена и отправлена на повторное рассмотрение.",
+        "en": "The application has been updated and resubmitted for review.",
+    },
+    "notice_edit_not_allowed": {
+        "ru": "Редактирование доступно только для отклонённых заявок.",
+        "en": "Editing is available only for rejected applications.",
+    },
     "notice_password_reset_email_queued": {
         "ru": "Если аккаунт с таким email существует, мы отправили ссылку для смены пароля.",
         "en": "If an account with this email exists, we have sent a password reset link.",
@@ -97,6 +105,12 @@ TEXTS: dict[str, dict[str, str]] = {
         "ru": 'После сохранения заявка появится в разделе "Мои заявки".',
         "en": 'After saving, the application will appear in the "My applications" section.',
     },
+    "conference_edit_page_title": {"ru": "Редактирование заявки", "en": "Edit application"},
+    "conference_edit_title": {"ru": "Редактирование заявки", "en": "Edit application"},
+    "conference_edit_desc": {
+        "ru": "Исправьте данные и сохраните заявку. После обновления она снова попадёт на рассмотрение.",
+        "en": "Update the data and save the application. After saving it will be sent for review again.",
+    },
     "precheck_title": {
         "ru": "Предварительная проверка файла публикации",
         "en": "Preliminary publication file validation",
@@ -118,6 +132,10 @@ TEXTS: dict[str, dict[str, str]] = {
         "ru": "При отсутствии на момент подачи заявки необходимо впоследствии отправить на graduate.applications@yandex.ru",
         "en": "If unavailable at the time of application should be sent subsequently to graduate.applications@yandex.ru",
     },
+    "current_file_name_hint": {
+        "ru": "Текущий файл: {filename}. Если новый файл не выбран, останется текущий.",
+        "en": "Current file: {filename}. If no new file is selected, the current one will be kept.",
+    },
     "personal_data_consent": {
         "ru": "Согласен на обработку персональных данных",
         "en": "I agree to the processing of personal data",
@@ -125,6 +143,7 @@ TEXTS: dict[str, dict[str, str]] = {
     "modal_close": {"ru": "Закрыть", "en": "Close"},
     "modal_success_title": {"ru": "Заявка сохранена", "en": "Application saved"},
     "submit_application": {"ru": "Сохранить заявку", "en": "Save application"},
+    "submit_application_update": {"ru": "Обновить заявку", "en": "Update application"},
     "required_note": {
         "ru": "Поля, обязательные для заполнения.",
         "en": "Fields marked with * are required.",
@@ -144,6 +163,7 @@ TEXTS: dict[str, dict[str, str]] = {
     },
     "records_empty_admin": {"ru": "В системе пока нет заявок.", "en": "There are no applications in the system yet."},
     "records_empty_action": {"ru": "Перейти к форме регистрации", "en": "Go to the registration form"},
+    "edit_rejected_application": {"ru": "Редактировать заявку", "en": "Edit application"},
     "highlight_status": {"ru": "Статус", "en": "Status"},
     "highlight_validation": {
         "ru": "Автопроверка файла публикации",

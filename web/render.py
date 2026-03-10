@@ -65,6 +65,7 @@ button {{ border:none; cursor:pointer; background:linear-gradient(135deg, #0f595
 .auth-actions {{ display:grid; gap:10px; justify-items:start; }}
 .text-button {{ width:auto; min-height:0; padding:0; border:none; background:none; color:var(--accent); font-weight:700; cursor:pointer; }}
 .action-link {{ display:inline-flex; align-items:center; justify-content:center; width:100%; min-height:46px; padding:12px 14px; border-radius:14px; background:var(--soft); color:var(--accent); font-weight:700; text-decoration:none; }}
+.action-link.action-link-warning {{ background:#f6dc6b; color:#5a4300; }}
 .modal-overlay {{ position:fixed; inset:0; z-index:1400; display:flex; align-items:center; justify-content:center; padding:20px; background:rgba(31,37,41,.45); backdrop-filter:blur(2px); }}
 .modal-window {{ width:min(560px, 100%); border:1px solid #b8e3c0; border-radius:16px; background:#fff; box-shadow:0 26px 56px rgba(15,89,89,.22); padding:16px 18px 18px; }}
 .modal-header {{ display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:8px; }}
@@ -77,6 +78,7 @@ button {{ border:none; cursor:pointer; background:linear-gradient(135deg, #0f595
 .record-highlight-body {{ font-size:1.08rem; font-weight:700; line-height:1.45; }}
 .record-highlight-comment .record-highlight-body {{ font-size:1.02rem; font-weight:600; }}
 .record-highlight-validation .record-highlight-body {{ font-size:1rem; font-weight:600; }}
+.record-actions {{ margin:0; }}
 .section-group {{ border:1px solid var(--line); border-radius:18px; background:#fffdfa; overflow:hidden; }}
 .section-group + .section-group {{ margin-top:16px; }}
 .section-summary {{ cursor:pointer; padding:16px 18px; font-weight:700; }}
@@ -567,8 +569,36 @@ def render_conference_form(
     precheck_error: str | None = None,
     precheck_file_name: str | None = None,
     precheck_result_text: str | None = None,
+    edit_registration_id: str | None = None,
+    existing_publication_file_name: str | None = None,
+    existing_expert_opinion_file_name: str | None = None,
     lang: str = DEFAULT_LANGUAGE,
 ) -> HTMLResponse:
+    is_edit_mode = bool(str(edit_registration_id or "").strip())
+    form_action = "/conference/register"
+    if is_edit_mode:
+        form_action = f'/conference/register/{str(edit_registration_id).strip()}/edit'
+
+    form_title_key = "conference_edit_title" if is_edit_mode else "conference_title"
+    form_desc_key = "conference_edit_desc" if is_edit_mode else "conference_desc"
+    submit_button_key = "submit_application_update" if is_edit_mode else "submit_application"
+    page_title_key = "conference_edit_page_title" if is_edit_mode else "conference_page_title"
+
+    publication_required_mark = ' <span class="required-mark">*</span>' if not is_edit_mode else ""
+    publication_required_attr = " required" if not is_edit_mode else ""
+
+    publication_hint_parts = [text(lang, "hint_publication_file")]
+    existing_publication_name = str(existing_publication_file_name or "").strip()
+    if is_edit_mode and existing_publication_name:
+        publication_hint_parts.append(text(lang, "current_file_name_hint", filename=existing_publication_name))
+    publication_hint_html = "<br>".join(escape(part) for part in publication_hint_parts)
+
+    expert_hint_parts = [text(lang, "hint_expert_opinion_file")]
+    existing_expert_name = str(existing_expert_opinion_file_name or "").strip()
+    if is_edit_mode and existing_expert_name:
+        expert_hint_parts.append(text(lang, "current_file_name_hint", filename=existing_expert_name))
+    expert_hint_html = "<br>".join(escape(part) for part in expert_hint_parts)
+
     values = dict(values or {})
     values.setdefault("email", current_user["email"])
     values.setdefault("participation", PARTICIPATION_OPTIONS[0])
@@ -610,8 +640,8 @@ def render_conference_form(
     body = f"""
     {success_modal}
     {precheck_section}
-    <section class="panel"><h2>{escape(text(lang, "conference_title"))}</h2><p>{escape(text(lang, "conference_desc"))}</p>
-      <form id="conference-registration-form" method="post" action="/conference/register" enctype="multipart/form-data">
+    <section class="panel"><h2>{escape(text(lang, form_title_key))}</h2><p>{escape(text(lang, form_desc_key))}</p>
+      <form id="conference-registration-form" method="post" action="{escape(form_action, quote=True)}" enctype="multipart/form-data">
         <div class="grid">
           <label><span class="field-caption">{escape(field_label("last_name", lang=lang))} <span class="required-mark">*</span></span><input type="text" name="last_name" placeholder="{escape(text(lang, "placeholder_last_name"), quote=True)}" required value="{field_value(values, 'last_name')}"></label>
           <label><span class="field-caption">{escape(field_label("first_name", lang=lang))} <span class="required-mark">*</span></span><input type="text" name="first_name" placeholder="{escape(text(lang, "placeholder_first_name"), quote=True)}" required value="{field_value(values, 'first_name')}"></label>
@@ -626,11 +656,11 @@ def render_conference_form(
           <label><span class="field-caption">{escape(field_label("section", lang=lang))} <span class="required-mark">*</span></span>{render_select('section', SECTION_OPTIONS, values.get('section'), lang=lang)}</label>
           <label><span class="field-caption">{escape(field_label("publication_title", lang=lang))} <span class="required-mark">*</span></span><input type="text" name="publication_title" required value="{field_value(values, 'publication_title')}"></label>
           <label><span class="field-caption">{escape(field_label("foreign_language_consultant", lang=lang))} <span class="required-mark">*</span></span><input type="text" name="foreign_language_consultant" required value="{field_value(values, 'foreign_language_consultant')}"></label>
-          <label><span class="field-caption">{escape(field_label("publication_file", lang=lang))} <span class="required-mark">*</span></span><input type="file" name="publication_file" accept=".docx" required><span class="field-hint">{escape(text(lang, "hint_publication_file"))}</span></label>
-          <label><span class="field-caption">{escape(field_label("expert_opinion_file", lang=lang))}</span><input type="file" name="expert_opinion_file" accept=".docx"><span class="field-hint">{escape(text(lang, "hint_expert_opinion_file"))}</span></label>
+          <label><span class="field-caption">{escape(field_label("publication_file", lang=lang))}{publication_required_mark}</span><input type="file" name="publication_file" accept=".docx"{publication_required_attr}><span class="field-hint">{publication_hint_html}</span></label>
+          <label><span class="field-caption">{escape(field_label("expert_opinion_file", lang=lang))}</span><input type="file" name="expert_opinion_file" accept=".docx"><span class="field-hint">{expert_hint_html}</span></label>
         </div>
         <label class="consent-row"><input type="checkbox" name="personal_data_consent" required><span>{escape(text(lang, "personal_data_consent"))}</span></label>
-        <button id="conference-submit-button" class="submit-button" type="submit" disabled>{escape(text(lang, "submit_application"))}</button>
+        <button id="conference-submit-button" class="submit-button" type="submit" disabled>{escape(text(lang, submit_button_key))}</button>
       </form>
       <script>
         (() => {{
@@ -650,7 +680,7 @@ def render_conference_form(
       <p class="form-note"><span class="required-mark">*</span> {escape(text(lang, "required_note"))}</p>
     </section>
     """
-    return layout(text(lang, "conference_page_title"), body, current_user=current_user, error=error, lang=lang)
+    return layout(text(lang, page_title_key), body, current_user=current_user, error=error, lang=lang)
 
 
 def _legacy_render_record_card(record: dict[str, Any], *, admin_mode: bool) -> str:
@@ -715,6 +745,7 @@ def render_record_card(record: dict[str, Any], *, admin_mode: bool, lang: str = 
     expert_opinion_file = record.get("expert_opinion_file") or {}
     publication_validation = record.get("publication_validation") or {}
     review_status = str(record.get("review_status") or REVIEW_STATUSES[0])
+    record_id = str(record.get("_id") or "").strip()
     comment_text = str(record.get("admin_comment") or "").strip() or text(lang, "comment_not_added")
     validation_summary = validation_summary_text(publication_validation, lang=lang)
     full_name = " ".join(
@@ -761,9 +792,17 @@ def render_record_card(record: dict[str, Any], *, admin_mode: bool, lang: str = 
         highlights_html = ""
     else:
         comment_html = escape(comment_text).replace("\n", "<br>")
+        edit_action_html = ""
+        if review_status == REVIEW_STATUSES[2] and record_id:
+            edit_action_html = (
+                '<div class="record-actions">'
+                f'<a class="action-link action-link-warning" href="/conference/register/{escape(record_id, quote=True)}/edit">{escape(text(lang, "edit_rejected_application"))}</a>'
+                "</div>"
+            )
         highlights_html = (
             '<section class="record-highlights"><br>'
             f'{render_highlight_block(text(lang, "highlight_status"), render_status_badge(review_status, large=True, lang=lang))}'
+            f"{edit_action_html}"
             f'{render_highlight_block(text(lang, "highlight_validation"), render_validation_details_html(publication_validation, lang=lang), extra_class="record-highlight-validation")}'
             f'{render_highlight_block(text(lang, "highlight_comment"), comment_html, extra_class="record-highlight-comment")}'
             "</section>"
