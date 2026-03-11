@@ -1,6 +1,6 @@
 services:
 #  api:
-#    image: ${COMPOSE_PROJECT_NAME}-api:${API_IMAGE_TAG:-latest}
+#    image: ${DOCKERHUB_NAMESPACE}/${COMPOSE_PROJECT_NAME}-api:${API_IMAGE_TAG:-latest}
 #    build:
 #      context: ..
 #      dockerfile: docker/api.Dockerfile
@@ -27,7 +27,7 @@ services:
 #        condition: service_healthy
 
   web:
-    image: ${COMPOSE_PROJECT_NAME}-web:${API_IMAGE_TAG:-latest}
+    image: ${DOCKERHUB_NAMESPACE}/${COMPOSE_PROJECT_NAME}-web:${API_IMAGE_TAG:-latest}
     build:
       context: ..
       dockerfile: docker/web.Dockerfile
@@ -75,7 +75,7 @@ services:
       - caddy-config:/config
 
   mailer:
-    image: ${COMPOSE_PROJECT_NAME}-mailer:${API_IMAGE_TAG:-latest}
+    image: ${DOCKERHUB_NAMESPACE}/${COMPOSE_PROJECT_NAME}-mailer:${API_IMAGE_TAG:-latest}
     build:
       context: ..
       dockerfile: docker/mailer.Dockerfile
@@ -99,7 +99,7 @@ services:
         condition: service_healthy
 
   checker:
-    image: ${COMPOSE_PROJECT_NAME}-checker:${API_IMAGE_TAG:-latest}
+    image: ${DOCKERHUB_NAMESPACE}/${COMPOSE_PROJECT_NAME}-checker:${API_IMAGE_TAG:-latest}
     build:
       context: ..
       dockerfile: docker/checker.Dockerfile
@@ -116,7 +116,7 @@ services:
         condition: service_healthy
 
   checker-api:
-    image: ${COMPOSE_PROJECT_NAME}-checker:${API_IMAGE_TAG:-latest}
+    image: ${DOCKERHUB_NAMESPACE}/${COMPOSE_PROJECT_NAME}-checker:${API_IMAGE_TAG:-latest}
     build:
       context: ..
       dockerfile: docker/checker.Dockerfile
@@ -126,7 +126,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
 
   mongo-backup:
-    image: ${COMPOSE_PROJECT_NAME}-mongo-backup:${API_IMAGE_TAG:-latest}
+    image: ${DOCKERHUB_NAMESPACE}/${COMPOSE_PROJECT_NAME}-mongo-backup:${API_IMAGE_TAG:-latest}
     build:
       context: ..
       dockerfile: docker/backup.Dockerfile
@@ -144,7 +144,7 @@ services:
         condition: service_healthy
 
 #  worker:
-#    image: ${COMPOSE_PROJECT_NAME}-worker:${API_IMAGE_TAG:-latest}
+#    image: ${DOCKERHUB_NAMESPACE}/${COMPOSE_PROJECT_NAME}-worker:${API_IMAGE_TAG:-latest}
 #    build:
 #      context: ..
 #      dockerfile: docker/worker.Dockerfile
