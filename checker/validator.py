@@ -148,7 +148,7 @@ class Validator:
         for p in self.doc.paragraphs:
             if p.text == "REFERENCES":
                 return
-            matches = re.findall(r"\[.*?\]", p.text)
+            matches = re.findall(r"\[.*?]", p.text)
             for m in matches:
                 if not re.match(pattern, m):
                     self.errors.append(f"Неверный формат ссылки: {m}")
@@ -159,7 +159,8 @@ class Validator:
         start = False
         count = 0
         for p in self.doc.paragraphs:
-            if "references" in p.text.lower(): # TODO: нужно ли на английском?
+            lower_text = p.text.lower()
+            if "references" in lower_text or "список литературы" in lower_text: # TODO: нужно ли на английском?
                 start = True
                 continue
             if start:
