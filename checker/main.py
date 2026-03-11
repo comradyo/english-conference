@@ -3,10 +3,10 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from io import BytesIO
 import logging
 import os
 import signal
-import tempfile
 from typing import Any
 
 from fastapi import FastAPI, File, UploadFile
@@ -56,23 +56,16 @@ class Settings:
 
 
 def validate_publication_content(content: bytes) -> tuple[list[str], list[str]]:
-    temp_path: str | None = None
+    buffer = BytesIO(content)
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as temp_file:
-            temp_file.write(content)
-            temp_path = temp_file.name
-        errors_ru, errors_eng = Validator(temp_path).validate()
+        errors_ru, errors_eng = Validator(buffer).validate()
         return [
             str(item).strip() for item in errors_ru if str(item).strip()
         ], [
             str(item).strip() for item in errors_eng if str(item).strip()
         ]
     finally:
-        if temp_path:
-            try:
-                os.unlink(temp_path)
-            except FileNotFoundError:
-                pass
+        buffer.close()
 
 
 def format_validation_result_text(errors: list[str], errors_eng: list[str]) -> str:
@@ -89,7 +82,10 @@ async def validate_file_api(file: UploadFile = File(...)) -> PlainTextResponse:
     if not filename.lower().endswith(".docx"):
         return PlainTextResponse("Можно загрузить только файл в формате .docx.", status_code=400)
 
-    content = await file.read()
+    try:
+        content = await file.read()
+    finally:
+        await file.close()
     if not content:
         return PlainTextResponse("Загруженный файл пуст.", status_code=400)
 

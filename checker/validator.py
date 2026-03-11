@@ -1,12 +1,14 @@
 import re
+from typing import BinaryIO
+
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Pt, Cm
 
 class Validator:
-    def __init__(self, filepath: str):
-        self.filepath = filepath
-        self.doc = Document(filepath)
+    def __init__(self, source: str | BinaryIO):
+        self.source = source
+        self.doc = Document(source)
         self.errors = []
         self.errors_eng = []
 
