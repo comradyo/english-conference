@@ -13,6 +13,7 @@ from fastapi import FastAPI, File, UploadFile
 from fastapi.responses import PlainTextResponse
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection
 from pymongo import ReturnDocument
+from pymongo.errors import PyMongoError
 
 from validator import Validator
 
@@ -102,6 +103,13 @@ async def ensure_indexes(collection: AsyncIOMotorCollection) -> None:
         [("publication_validation.status", 1), ("created_at", 1)],
         name="idx_registration_publication_validation",
     )
+
+
+async def wait_for_stop_or_timeout(stop_event: asyncio.Event, timeout_sec: int) -> None:
+    try:
+        await asyncio.wait_for(stop_event.wait(), timeout=timeout_sec)
+    except asyncio.TimeoutError:
+        pass
 
 
 async def claim_registration(
@@ -203,39 +211,46 @@ async def process_registrations(settings: Settings) -> None:
                 pass
 
     try:
-        await ensure_indexes(collection)
+        while not stop_event.is_set():
+            try:
+                await ensure_indexes(collection)
+                break
+            except PyMongoError:
+                LOGGER.exception("Failed to ensure checker indexes. Retrying in %ss", settings.poll_interval_sec)
+                await wait_for_stop_or_timeout(stop_event, settings.poll_interval_sec)
         LOGGER.info("Checker started. Poll interval: %ss", settings.poll_interval_sec)
         while not stop_event.is_set():
-            record = await claim_registration(
-                collection,
-                processing_timeout_sec=settings.processing_timeout_sec,
-            )
-            if record is None:
-                try:
-                    await asyncio.wait_for(stop_event.wait(), timeout=settings.poll_interval_sec)
-                except asyncio.TimeoutError:
-                    pass
-                continue
-
-            registration_id = record["_id"]
-            file_info = record.get("publication_file") or {}
-            file_data = file_info.get("data")
-            if not file_data:
-                await mark_validation_error(
-                    collection,
-                    registration_id,
-                    error="В заявке отсутствует содержимое файла публикации.",
-                )
-                continue
-
             try:
-                errors = await asyncio.to_thread(validate_publication_content, bytes(file_data))
-            except Exception as exc:
-                LOGGER.exception("Validation failed for registration %s", registration_id)
-                await mark_validation_error(collection, registration_id, error=str(exc))
-            else:
-                LOGGER.info("Validation finished for registration %s", registration_id)
-                await mark_validation_complete(collection, registration_id, errors)
+                record = await claim_registration(
+                    collection,
+                    processing_timeout_sec=settings.processing_timeout_sec,
+                )
+                if record is None:
+                    await wait_for_stop_or_timeout(stop_event, settings.poll_interval_sec)
+                    continue
+
+                registration_id = record["_id"]
+                file_info = record.get("publication_file") or {}
+                file_data = file_info.get("data")
+                if not file_data:
+                    await mark_validation_error(
+                        collection,
+                        registration_id,
+                        error="В заявке отсутствует содержимое файла публикации.",
+                    )
+                    continue
+
+                try:
+                    errors = await asyncio.to_thread(validate_publication_content, bytes(file_data))
+                except Exception as exc:
+                    LOGGER.exception("Validation failed for registration %s", registration_id)
+                    await mark_validation_error(collection, registration_id, error=str(exc))
+                else:
+                    LOGGER.info("Validation finished for registration %s", registration_id)
+                    await mark_validation_complete(collection, registration_id, errors)
+            except PyMongoError:
+                LOGGER.exception("Mongo operation failed in checker loop. Retrying in %ss", settings.poll_interval_sec)
+                await wait_for_stop_or_timeout(stop_event, settings.poll_interval_sec)
     finally:
         client.close()
 

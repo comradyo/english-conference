@@ -13,6 +13,7 @@ from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection
 from pymongo import ReturnDocument
+from pymongo.errors import PyMongoError
 
 
 LOGGER = logging.getLogger("mailer")
@@ -46,6 +47,7 @@ class Settings:
     notification_email_use_ssl: bool
     poll_interval_sec: int
     retry_delay_sec: int
+    processing_timeout_sec: int
     max_attempts: int
     log_level: str
 
@@ -70,6 +72,7 @@ class Settings:
             notification_email_use_ssl=use_ssl,
             poll_interval_sec=max(1, int(os.getenv("MAILER_POLL_INTERVAL_SEC", "5"))),
             retry_delay_sec=max(5, int(os.getenv("MAILER_RETRY_DELAY_SEC", "60"))),
+            processing_timeout_sec=max(30, int(os.getenv("MAILER_PROCESSING_TIMEOUT_SEC", "300"))),
             max_attempts=max(1, int(os.getenv("MAILER_MAX_ATTEMPTS", "5"))),
             log_level=os.getenv("LOG_LEVEL", "info").strip().upper() or "INFO",
         )
@@ -239,12 +242,32 @@ async def ensure_indexes(collection: AsyncIOMotorCollection) -> None:
     )
 
 
-async def claim_task(collection: AsyncIOMotorCollection) -> dict[str, Any] | None:
+async def wait_for_stop_or_timeout(stop_event: asyncio.Event, timeout_sec: int) -> None:
+    try:
+        await asyncio.wait_for(stop_event.wait(), timeout=timeout_sec)
+    except asyncio.TimeoutError:
+        pass
+
+
+async def claim_task(
+    collection: AsyncIOMotorCollection,
+    *,
+    processing_timeout_sec: int,
+) -> dict[str, Any] | None:
     claimed_at = now_utc()
+    stale_before = claimed_at - timedelta(seconds=processing_timeout_sec)
     return await collection.find_one_and_update(
         {
-            "status": {"$in": ["pending", "retry"]},
-            "available_at": {"$lte": claimed_at},
+            "$or": [
+                {
+                    "status": {"$in": ["pending", "retry"]},
+                    "available_at": {"$lte": claimed_at},
+                },
+                {
+                    "status": "processing",
+                    "started_at": {"$lte": stale_before},
+                },
+            ]
         },
         {
             "$set": {
@@ -311,33 +334,44 @@ async def process_tasks(settings: Settings) -> None:
                 pass
 
     try:
-        await ensure_indexes(collection)
+        while not stop_event.is_set():
+            try:
+                await ensure_indexes(collection)
+                break
+            except PyMongoError:
+                LOGGER.exception("Failed to ensure mailer indexes. Retrying in %ss", settings.poll_interval_sec)
+                await wait_for_stop_or_timeout(stop_event, settings.poll_interval_sec)
+
         LOGGER.info("Mailer started. Poll interval: %ss", settings.poll_interval_sec)
         while not stop_event.is_set():
-            task = await claim_task(collection)
-            if task is None:
-                try:
-                    await asyncio.wait_for(stop_event.wait(), timeout=settings.poll_interval_sec)
-                except asyncio.TimeoutError:
-                    pass
-                continue
-
-            task_id = str(task.get("_id"))
             try:
-                LOGGER.info("Processing task %s (attempt %s)", task_id, task.get("attempts"))
-                await send_task_email(settings, task)
-            except Exception as exc:
-                LOGGER.exception("Task %s failed", task_id)
-                await mark_task_failed(
+                task = await claim_task(
                     collection,
-                    task,
-                    error=str(exc),
-                    retry_delay_sec=settings.retry_delay_sec,
-                    max_attempts=settings.max_attempts,
+                    processing_timeout_sec=settings.processing_timeout_sec,
                 )
-            else:
-                LOGGER.info("Task %s sent", task_id)
-                await mark_task_sent(collection, task["_id"])
+                if task is None:
+                    await wait_for_stop_or_timeout(stop_event, settings.poll_interval_sec)
+                    continue
+
+                task_id = str(task.get("_id"))
+                try:
+                    LOGGER.info("Processing task %s (attempt %s)", task_id, task.get("attempts"))
+                    await send_task_email(settings, task)
+                except Exception as exc:
+                    LOGGER.exception("Task %s failed", task_id)
+                    await mark_task_failed(
+                        collection,
+                        task,
+                        error=str(exc),
+                        retry_delay_sec=settings.retry_delay_sec,
+                        max_attempts=settings.max_attempts,
+                    )
+                else:
+                    LOGGER.info("Task %s sent", task_id)
+                    await mark_task_sent(collection, task["_id"])
+            except PyMongoError:
+                LOGGER.exception("Mongo operation failed in mailer loop. Retrying in %ss", settings.poll_interval_sec)
+                await wait_for_stop_or_timeout(stop_event, settings.poll_interval_sec)
     finally:
         client.close()
 
