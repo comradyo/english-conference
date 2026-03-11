@@ -55,14 +55,18 @@ class Settings:
         )
 
 
-def validate_publication_content(content: bytes) -> list[str]:
+def validate_publication_content(content: bytes) -> tuple[list[str], list[str]]:
     temp_path: str | None = None
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as temp_file:
             temp_file.write(content)
             temp_path = temp_file.name
-        errors = Validator(temp_path).validate()
-        return [str(item).strip() for item in errors if str(item).strip()]
+        errors_ru, errors_eng = Validator(temp_path).validate()
+        return [
+            str(item).strip() for item in errors_ru if str(item).strip()
+        ], [
+            str(item).strip() for item in errors_eng if str(item).strip()
+        ]
     finally:
         if temp_path:
             try:
@@ -71,10 +75,10 @@ def validate_publication_content(content: bytes) -> list[str]:
                 pass
 
 
-def format_validation_result_text(errors: list[str]) -> str:
+def format_validation_result_text(errors: list[str], errors_eng: list[str]) -> str:
     if not errors:
-        return "Предварительная проверка завершена: ошибок не найдено."
-    return "Предварительная проверка завершена: найдены замечания.\n- " + "\n- ".join(errors)
+        return "Предварительная проверка завершена: ошибок не найдено.\n" + "The preliminary check is completed: no errors were found."
+    return "Предварительная проверка завершена: найдены замечания.\n- " + "\n- ".join(errors) + "\nThe preliminary check has been completed: comments have been found.\n- " + "\n- ".join(errors_eng)
 
 
 @api_app.post("/validate", include_in_schema=False, response_class=PlainTextResponse)
@@ -90,12 +94,12 @@ async def validate_file_api(file: UploadFile = File(...)) -> PlainTextResponse:
         return PlainTextResponse("Загруженный файл пуст.", status_code=400)
 
     try:
-        errors = await asyncio.to_thread(validate_publication_content, content)
+        errors_ru, errors_eng = await asyncio.to_thread(validate_publication_content, content)
     except Exception as exc:
         LOGGER.exception("API validation failed for %s", filename)
         return PlainTextResponse(f"Не удалось выполнить проверку файла: {exc}", status_code=500)
 
-    return PlainTextResponse(format_validation_result_text(errors))
+    return PlainTextResponse(format_validation_result_text(errors_ru, errors_eng))
 
 
 async def ensure_indexes(collection: AsyncIOMotorCollection) -> None:
@@ -241,13 +245,13 @@ async def process_registrations(settings: Settings) -> None:
                     continue
 
                 try:
-                    errors = await asyncio.to_thread(validate_publication_content, bytes(file_data))
+                    errors, errors_eng = await asyncio.to_thread(validate_publication_content, bytes(file_data))
                 except Exception as exc:
                     LOGGER.exception("Validation failed for registration %s", registration_id)
                     await mark_validation_error(collection, registration_id, error=str(exc))
                 else:
                     LOGGER.info("Validation finished for registration %s", registration_id)
-                    await mark_validation_complete(collection, registration_id, errors)
+                    await mark_validation_complete(collection, registration_id, errors + errors_eng)
             except PyMongoError:
                 LOGGER.exception("Mongo operation failed in checker loop. Retrying in %ss", settings.poll_interval_sec)
                 await wait_for_stop_or_timeout(stop_event, settings.poll_interval_sec)
