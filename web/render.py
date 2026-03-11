@@ -372,6 +372,42 @@ def form_language_label(value: Any, *, lang: str = DEFAULT_LANGUAGE) -> str:
     return value_text
 
 
+def render_precheck_section(
+    *,
+    lang: str = DEFAULT_LANGUAGE,
+    precheck_error: str | None = None,
+    precheck_file_name: str | None = None,
+    precheck_result_text: str | None = None,
+) -> str:
+    precheck_result_html = ""
+    if precheck_result_text:
+        lines = [line.strip() for line in str(precheck_result_text).splitlines() if line.strip()]
+        rendered_text = "<br>".join(escape(line) for line in lines) if lines else escape(precheck_result_text)
+        file_name_html = ""
+        if precheck_file_name:
+            file_name_html = f'<p><strong>{escape(text(lang, "file_name_prefix"))}</strong> {escape(precheck_file_name)}</p>'
+        precheck_result_html = (
+            '<div class="record-highlight record-highlight-validation">'
+            f'<span>{escape(text(lang, "precheck_result"))}</span>'
+            f'{file_name_html}<div class="record-highlight-body">{rendered_text}</div>'
+            "</div>"
+        )
+    return f"""
+    <section class="panel" data-precheck-panel>
+      <h2>{escape(text(lang, "precheck_title"))}</h2>
+      <p>{escape(text(lang, "precheck_desc"))}</p>
+      <div data-precheck-feedback aria-live="polite">
+        {banner(precheck_error, 'error')}
+        {precheck_result_html}
+      </div>
+      <form method="post" action="/conference/precheck" enctype="multipart/form-data" data-precheck-form>
+        <label><span class="field-caption">{escape(field_label("publication_file", lang=lang))}</span><input type="file" name="publication_file" accept=".docx" required></label>
+        <button type="submit" data-precheck-submit data-loading-label="{escape(text(lang, 'precheck_button_loading'), quote=True)}">{escape(text(lang, "precheck_button"))}</button>
+      </form>
+    </section>
+    """
+
+
 def _legacy_render_object_fields(record: dict[str, Any]) -> str:
     rows: list[str] = []
 
@@ -666,31 +702,12 @@ def render_conference_form(
     values.setdefault("email", current_user["email"])
     values.setdefault("participation", PARTICIPATION_OPTIONS[0])
     values.setdefault("section", SECTION_OPTIONS[0])
-    precheck_result_html = ""
-    if precheck_result_text:
-        lines = [line.strip() for line in str(precheck_result_text).splitlines() if line.strip()]
-        rendered_text = "<br>".join(escape(line) for line in lines) if lines else escape(precheck_result_text)
-        file_name_html = ""
-        if precheck_file_name:
-            file_name_html = f'<p><strong>{escape(text(lang, "file_name_prefix"))}</strong> {escape(precheck_file_name)}</p>'
-        precheck_result_html = (
-            '<div class="record-highlight record-highlight-validation">'
-            f'<span>{escape(text(lang, "precheck_result"))}</span>'
-            f'{file_name_html}<div class="record-highlight-body">{rendered_text}</div>'
-            "</div>"
-        )
-    precheck_section = f"""
-    <section class="panel">
-      <h2>{escape(text(lang, "precheck_title"))}</h2>
-      <p>{escape(text(lang, "precheck_desc"))}</p>
-      {banner(precheck_error, 'error')}
-      {precheck_result_html}
-      <form method="post" action="/conference/precheck" enctype="multipart/form-data">
-        <label><span class="field-caption">{escape(field_label("publication_file", lang=lang))}</span><input type="file" name="publication_file" accept=".docx" required></label>
-        <button type="submit">{escape(text(lang, "precheck_button"))}</button>
-      </form>
-    </section>
-    """
+    precheck_section = render_precheck_section(
+        lang=lang,
+        precheck_error=precheck_error,
+        precheck_file_name=precheck_file_name,
+        precheck_result_text=precheck_result_text,
+    )
     success_modal = ""
     if success:
         success_modal = (
@@ -729,15 +746,64 @@ def render_conference_form(
         (() => {{
           const form = document.getElementById("conference-registration-form");
           const submitButton = document.getElementById("conference-submit-button");
-          if (!form || !submitButton) {{
-            return;
+          if (form && submitButton) {{
+            const updateSubmitState = () => {{
+              submitButton.disabled = !form.checkValidity();
+            }};
+            form.addEventListener("input", updateSubmitState);
+            form.addEventListener("change", updateSubmitState);
+            updateSubmitState();
           }}
-          const updateSubmitState = () => {{
-            submitButton.disabled = !form.checkValidity();
+
+          const bindPrecheckForm = () => {{
+            const panel = document.querySelector("[data-precheck-panel]");
+            if (!panel) {{
+              return;
+            }}
+            const precheckForm = panel.querySelector("[data-precheck-form]");
+            const precheckSubmit = panel.querySelector("[data-precheck-submit]");
+            if (!precheckForm || !precheckSubmit || precheckForm.dataset.precheckBound === "true") {{
+              return;
+            }}
+            precheckForm.dataset.precheckBound = "true";
+            const defaultLabel = precheckSubmit.textContent;
+            const loadingLabel = precheckSubmit.dataset.loadingLabel || defaultLabel;
+
+            precheckForm.addEventListener("submit", async (event) => {{
+              event.preventDefault();
+              if (!precheckForm.reportValidity()) {{
+                return;
+              }}
+              precheckSubmit.disabled = true;
+              precheckSubmit.textContent = loadingLabel;
+              panel.setAttribute("aria-busy", "true");
+
+              try {{
+                const response = await fetch(precheckForm.action, {{
+                  method: "POST",
+                  body: new FormData(precheckForm),
+                  headers: {{
+                    "X-Requested-With": "fetch",
+                  }},
+                }});
+                const html = await response.text();
+                const nextDocument = new DOMParser().parseFromString(html, "text/html");
+                const nextPanel = nextDocument.querySelector("[data-precheck-panel]");
+                if (!nextPanel) {{
+                  throw new Error("Missing precheck panel in response.");
+                }}
+                panel.replaceWith(nextPanel);
+                bindPrecheckForm();
+              }} catch (error) {{
+                precheckSubmit.disabled = false;
+                precheckSubmit.textContent = defaultLabel;
+                panel.removeAttribute("aria-busy");
+                precheckForm.submit();
+              }}
+            }});
           }};
-          form.addEventListener("input", updateSubmitState);
-          form.addEventListener("change", updateSubmitState);
-          updateSubmitState();
+
+          bindPrecheckForm();
         }})();
       </script>
       <p class="form-note"><span class="required-mark">*</span> {escape(text(lang, "required_note"))}</p>

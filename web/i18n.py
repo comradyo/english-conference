@@ -146,6 +146,7 @@ TEXTS: dict[str, dict[str, str]] = {
     },
     "precheck_result": {"ru": "Результат проверки", "en": "Validation result"},
     "precheck_button": {"ru": "Проверить файл", "en": "Validate file"},
+    "precheck_button_loading": {"ru": "Проверяем файл...", "en": "Validating file..."},
     "placeholder_last_name": {"ru": "Иванов", "en": "Smith"},
     "placeholder_first_name": {"ru": "Иван", "en": "Jack"},
     "placeholder_place_of_study": {"ru": "МГТУ им. Н.Э. Баумана", "en": "BMSTU"},
