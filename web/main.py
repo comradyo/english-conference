@@ -1111,6 +1111,32 @@ async def save_author_comment(
     return localized_redirect(request, "/my-registrations?notice=comment_added", status_code=303)
 
 
+@app.post("/my-registrations/delete/{registration_id}", include_in_schema=False)
+async def delete_author_registration(
+    registration_id: str,
+    request: Request,
+):
+    current_user, response = await require_user(request)
+    if response:
+        return response
+
+    object_id = parse_object_id(registration_id)
+    if object_id is None:
+        return localized_redirect(request, "/my-registrations?notice=delete_not_allowed", status_code=303)
+
+    delete_result = await request.app.state.registrations_collection.delete_one(
+        {
+            "_id": object_id,
+            "owner_user_id": current_user["_id"],
+            "review_status": PENDING_REVIEW_STATUS,
+        }
+    )
+    if delete_result.deleted_count == 0:
+        return localized_redirect(request, "/my-registrations?notice=delete_not_allowed", status_code=303)
+
+    return localized_redirect(request, "/my-registrations?notice=registration_deleted", status_code=303)
+
+
 @app.get("/my-registrations")
 async def my_registrations(request: Request):
     lang = request_language(request)
