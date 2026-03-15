@@ -51,6 +51,14 @@ TEXTS: dict[str, dict[str, str]] = {
         "ru": "Редактирование доступно только для заявок со статусом «На доработке».",
         "en": "Editing is available only for applications with the \"Needs revision\" status.",
     },
+    "notice_registration_deleted": {
+        "ru": "Заявка удалена.",
+        "en": "The application has been deleted.",
+    },
+    "notice_delete_not_allowed": {
+        "ru": "Удаление доступно только для вашей заявки со статусом «На рассмотрении».",
+        "en": "Deletion is available only for your application with the \"Under review\" status.",
+    },
     "notice_password_reset_email_queued": {
         "ru": "Если аккаунт с таким email существует, мы отправили ссылку для смены пароля.",
         "en": "If an account with this email exists, we have sent a password reset link.",
@@ -194,6 +202,11 @@ TEXTS: dict[str, dict[str, str]] = {
     "records_empty_admin": {"ru": "В системе пока нет заявок.", "en": "There are no applications in the system yet."},
     "records_empty_action": {"ru": "Перейти к форме регистрации", "en": "Go to the registration form"},
     "edit_rejected_application": {"ru": "Редактировать заявку", "en": "Edit application"},
+    "delete_pending_application": {"ru": "Удалить заявку", "en": "Delete application"},
+    "delete_application_confirm": {
+        "ru": "Удалить заявку? Действие нельзя отменить.",
+        "en": "Delete the application? This action cannot be undone.",
+    },
     "highlight_status": {"ru": "Статус", "en": "Status"},
     "highlight_validation": {
         "ru": "Автопроверка файла публикации",

@@ -66,6 +66,7 @@ button {{ border:none; cursor:pointer; background:linear-gradient(135deg, #0f595
 .text-button {{ width:auto; min-height:0; padding:0; border:none; background:none; color:var(--accent); font-weight:700; cursor:pointer; }}
 .action-link {{ display:inline-flex; align-items:center; justify-content:center; width:100%; min-height:46px; padding:12px 14px; border-radius:14px; background:var(--soft); color:var(--accent); font-weight:700; text-decoration:none; }}
 .action-link.action-link-warning {{ background:#f6dc6b; color:#5a4300; }}
+.action-link.action-link-danger {{ background:#f8dddd; color:#7f2020; }}
 .modal-overlay {{ position:fixed; inset:0; z-index:1400; display:flex; align-items:center; justify-content:center; padding:20px; background:rgba(31,37,41,.45); backdrop-filter:blur(2px); }}
 .modal-window {{ width:min(560px, 100%); border:1px solid #b8e3c0; border-radius:16px; background:#fff; box-shadow:0 26px 56px rgba(15,89,89,.22); padding:16px 18px 18px; }}
 .modal-header {{ display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:8px; }}
@@ -921,17 +922,25 @@ def render_record_card(record: dict[str, Any], *, admin_mode: bool, lang: str = 
         highlights_html = ""
         author_comment_form_html = ""
     else:
-        edit_action_html = ""
+        action_buttons: list[str] = []
         if review_status == REVIEW_STATUSES[2] and record_id:
-            edit_action_html = (
+            action_buttons.append(
                 '<div class="record-actions">'
                 f'<a class="action-link action-link-warning" href="/conference/register/{escape(record_id, quote=True)}/edit">{escape(text(lang, "edit_rejected_application"))}</a>'
                 "</div>"
             )
+        if review_status == REVIEW_STATUSES[0] and record_id:
+            action_buttons.append(
+                f'<form method="post" action="/my-registrations/delete/{escape(record_id, quote=True)}" class="record-actions" '
+                f'onsubmit="return confirm(\'{escape(text(lang, "delete_application_confirm"), quote=True)}\');">'
+                f'<button type="submit" class="action-link action-link-danger">{escape(text(lang, "delete_pending_application"))}</button>'
+                "</form>"
+            )
+        actions_html = "".join(action_buttons)
         highlights_html = (
             '<section class="record-highlights"><br>'
             f'{render_highlight_block(text(lang, "highlight_status"), render_status_badge(review_status, large=True, lang=lang))}'
-            f"{edit_action_html}"
+            f"{actions_html}"
             f'{render_highlight_block(text(lang, "highlight_validation"), render_validation_details_html(publication_validation, lang=lang), extra_class="record-highlight-validation")}'
             f'{render_highlight_block(text(lang, "highlight_comment"), comments_html, extra_class="record-highlight-comment")}'
             "</section>"
