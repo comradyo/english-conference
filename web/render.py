@@ -734,13 +734,13 @@ def render_conference_form(
     values.setdefault("section", SECTION_OPTIONS[0])
     selected_participation = str(values.get("participation") or PARTICIPATION_OPTIONS[0])
     has_existing_publication_file = bool(existing_publication_name)
-    publication_allowed = participation_requires_publication_file(selected_participation)
+    publication_required_by_participation = participation_requires_publication_file(selected_participation)
     publication_required = (
-        not has_existing_publication_file and publication_allowed
+        not has_existing_publication_file and publication_required_by_participation
     )
     publication_required_mark_hidden_attr = "" if publication_required else " hidden"
     publication_required_attr = " required" if publication_required else ""
-    publication_disabled_attr = "" if publication_allowed else " disabled"
+    publication_disabled_attr = "" if publication_required_by_participation else " disabled"
     precheck_section = render_precheck_section(
         lang=lang,
         precheck_error=precheck_error,
