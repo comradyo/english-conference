@@ -3,11 +3,25 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, EmailStr, StringConstraints
 
 
+PARTICIPATION_ORAL_PRESENTATION = "Выступление с презентацией"
+PARTICIPATION_ORAL_PRESENTATION_WITHOUT_PUBLICATION = "Выступление с презентацией без публикации"
+PARTICIPATION_ONLINE_PRESENTATION = "Online-презентация (для иногородних участников)"
+PARTICIPATION_PUBLICATION_ONLY = "Публикация в сборнике (без презентации)"
+PARTICIPATION_GUEST = "Гость"
+
 PARTICIPATION_OPTIONS = (
-    "Выступление с презентацией",
-    "Online-презентация (для иногородних участников)",
-    "Публикация в сборнике (без презентации)",
-    "Гость",
+    PARTICIPATION_ORAL_PRESENTATION,
+    PARTICIPATION_ORAL_PRESENTATION_WITHOUT_PUBLICATION,
+    PARTICIPATION_ONLINE_PRESENTATION,
+    PARTICIPATION_PUBLICATION_ONLY,
+    PARTICIPATION_GUEST,
+)
+
+OPTIONAL_PUBLICATION_PARTICIPATION_OPTIONS = frozenset(
+    {
+        PARTICIPATION_ORAL_PRESENTATION_WITHOUT_PUBLICATION,
+        PARTICIPATION_GUEST,
+    }
 )
 
 SECTION_OPTIONS = (
@@ -41,6 +55,18 @@ RegistrationPassword = Annotated[str, StringConstraints(min_length=8, max_length
 LoginPassword = Annotated[str, StringConstraints(min_length=1, max_length=128)]
 ResetToken = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=256)]
 
+ConferenceParticipation = Literal[
+    PARTICIPATION_ORAL_PRESENTATION,
+    PARTICIPATION_ORAL_PRESENTATION_WITHOUT_PUBLICATION,
+    PARTICIPATION_ONLINE_PRESENTATION,
+    PARTICIPATION_PUBLICATION_ONLY,
+    PARTICIPATION_GUEST,
+]
+
+
+def participation_requires_publication_file(participation: str) -> bool:
+    return participation not in OPTIONAL_PUBLICATION_PARTICIPATION_OPTIONS
+
 
 class AccountRegistrationPayload(BaseModel):
     email: EmailStr
@@ -73,12 +99,7 @@ class ConferenceRegistrationPayload(BaseModel):
     job_title: OptionalText | None = None
     phone: PhoneNumber
     email: EmailStr
-    participation: Literal[
-        "Выступление с презентацией",
-        "Online-презентация (для иногородних участников)",
-        "Публикация в сборнике (без презентации)",
-        "Гость",
-    ]
+    participation: ConferenceParticipation
     section: Literal[
         "Электроника и лазерная техника",
         "Фундаментальная математика и физика",

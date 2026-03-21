@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timedelta, timezone
 from html import escape
 from typing import Any
@@ -16,7 +17,13 @@ from i18n import (
     validation_status_label,
     validation_summary_label,
 )
-from models import PARTICIPATION_OPTIONS, REVIEW_STATUSES, SECTION_OPTIONS
+from models import (
+    OPTIONAL_PUBLICATION_PARTICIPATION_OPTIONS,
+    PARTICIPATION_OPTIONS,
+    REVIEW_STATUSES,
+    SECTION_OPTIONS,
+    participation_requires_publication_file,
+)
 
 
 MOSCOW_TZ = timezone(timedelta(hours=3), name="UTC+3")
@@ -35,15 +42,21 @@ def layout(
     lang: str = DEFAULT_LANGUAGE,
 ) -> HTMLResponse:
     current_lang = resolve_language(lang)
+    footer_email = "graduate.applications@yandex.ru"
     return HTMLResponse(
         content=f"""<!DOCTYPE html>
 <html lang="{escape(current_lang, quote=True)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{escape(title)}</title>
+<link rel="icon" type="image/png" href="/static/favicon.png">
 <style>
-:root {{ --bg:#f5efe7; --panel:#fffdf9; --line:#d7d2c8; --accent:#0f5959; --soft:#d9efef; --text:#1f2529; --muted:#60696f; --danger-bg:#f8dddd; --danger-text:#7f2020; --ok-bg:#dff3e3; --ok-text:#155728; font-family:"Segoe UI",Tahoma,Geneva,Verdana,sans-serif; }}
+@font-face {{ font-family:"ALS Sector Bold"; src:url("/static/fonts/ALS_Sector-Bold.woff2") format("woff2"); font-style:normal; font-weight:700; font-display:swap; }}
+:root {{ --bg:#f5efe7; --panel:#fffdf9; --line:#d7d2c8; --accent:#0f5959; --soft:#d9efef; --text:#1f2529; --muted:#60696f; --danger-bg:#f8dddd; --danger-text:#7f2020; --ok-bg:#dff3e3; --ok-text:#155728; }}
 * {{ box-sizing:border-box; }} body {{ margin:0; min-height:100vh; color:var(--text); background:radial-gradient(circle at top right, rgba(15,89,89,.12), transparent 28%), radial-gradient(circle at bottom left, rgba(180,83,9,.1), transparent 20%), var(--bg); }}
+body, input, select, textarea, button {{ font-family:"ALS Sector Bold","Segoe UI",Tahoma,Geneva,Verdana,sans-serif; }}
 .page {{ width:min(1600px, calc(100% - 32px)); margin:28px auto; }} .shell {{ background:var(--panel); border:1px solid rgba(15,89,89,.1); border-radius:24px; padding:24px; box-shadow:0 18px 50px rgba(15,89,89,.08); }}
 .topbar, nav, .card-title {{ display:flex; gap:12px; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; }} .topbar {{ margin-bottom:18px; }} .topbar-side {{ display:grid; gap:12px; justify-items:end; }} nav {{ margin:18px 0 20px; }}
+.brand {{ --brand-logo-height:var(--topbar-side-height, 100%); --brand-logo-width:calc(var(--brand-logo-height) * 361 / 426); position:relative; display:flex; align-items:center; padding-left:calc(var(--brand-logo-width) + 12px); min-height:var(--brand-logo-height); }} .brand-copy {{ display:grid; gap:8px; min-width:0; }}
+.brand-logo-link {{ position:absolute; left:0; top:0; display:inline-flex; align-items:center; justify-content:center; width:var(--brand-logo-width); height:var(--brand-logo-height); border-radius:24px; overflow:hidden; background:rgba(15,89,89,.05); }} .brand-logo {{ display:block; width:100%; height:100%; object-fit:contain; }}
 h1 {{ margin:0; font-size:clamp(2rem, 4vw, 2.7rem); line-height:1.05; }} h2 {{ margin:0 0 14px; font-size:1.2rem; }} p {{ margin:0 0 14px; color:var(--muted); }}
 .subtitle {{ margin-top:8px; max-width:760px; }} .user-badge, nav a, .language-link {{ padding:10px 14px; border-radius:999px; font-weight:600; text-decoration:none; }}
 .user-badge {{ background:#f1f6f6; border:1px solid var(--line); color:var(--accent); }} nav a {{ background:var(--soft); color:var(--accent); }}
@@ -103,9 +116,22 @@ button {{ border:none; cursor:pointer; background:linear-gradient(135deg, #0f595
 .admin-tools {{ display:grid; gap:10px; min-width:260px; }}
 .admin-tools form {{ gap:10px; }}
 .admin-tools textarea {{ min-height:84px; }}
-.section-meta {{ color:var(--muted); font-weight:600; }} .field-caption {{ display:inline-flex; align-items:baseline; gap:4px; }} .required-mark {{ color:#a33030; font-weight:800; }} .field-hint {{ color:var(--muted); font-size:.9rem; font-weight:500; }} .consent-row {{ display:flex; align-items:flex-start; gap:10px; font-weight:600; }} .consent-row input[type="checkbox"] {{ width:18px; min-width:18px; height:18px; margin-top:2px; padding:0; border-radius:4px; accent-color:var(--accent); }} .submit-button:disabled {{ background:#c9ced3; color:#7a8288; cursor:not-allowed; }} .form-note {{ margin-top:14px; margin-bottom:0; font-size:.95rem; color:var(--muted); }} .site-footer {{ margin-top:18px; padding:14px 8px 0; text-align:center; color:var(--muted); font-size:.95rem; }}
-@media (max-width:820px) {{ .split, .grid {{ grid-template-columns:1fr; }} .shell {{ padding:18px; border-radius:18px; }} }}
-</style></head><body><main class="page"><section class="shell"><div class="topbar"><div><h1>{escape(title)}</h1></div><div class="topbar-side">{language_switcher(current_lang)}{user_badge(current_user, lang=current_lang)}</div></div><nav>{nav_html(current_user, lang=current_lang)}</nav>{banner(success, 'success')}{banner(error, 'error')}{body}</section><footer class="site-footer">{escape(text(current_lang, "footer"))}</footer></main><script>
+.section-meta {{ color:var(--muted); font-weight:600; }} .field-caption {{ display:inline-flex; align-items:baseline; gap:4px; }} .required-mark {{ color:#a33030; font-weight:800; }} .field-hint {{ color:var(--muted); font-size:.9rem; font-weight:500; }} .consent-row {{ display:flex; align-items:flex-start; gap:10px; font-weight:600; }} .consent-row input[type="checkbox"] {{ width:18px; min-width:18px; height:18px; margin-top:2px; padding:0; border-radius:4px; accent-color:var(--accent); }} .submit-button:disabled {{ background:#c9ced3; color:#7a8288; cursor:not-allowed; }} .form-note {{ margin-top:14px; margin-bottom:0; font-size:.95rem; color:var(--muted); }} .site-footer {{ margin-top:18px; padding:14px 8px 0; text-align:center; color:var(--muted); font-size:.95rem; }} .site-footer p {{ margin:0; }} .footer-email {{ color:var(--accent); text-decoration:none; }}
+@media (max-width:820px) {{ .split, .grid {{ grid-template-columns:1fr; }} .shell {{ padding:18px; border-radius:18px; }} .brand {{ padding-left:0; flex-direction:column; align-items:flex-start; gap:16px; min-height:0; }} .brand-logo-link {{ position:static; width:auto; height:auto; max-width:min(220px, 55vw); overflow:visible; }} .brand-logo {{ width:100%; height:auto; max-width:min(220px, 55vw); aspect-ratio:auto; }} }}
+</style></head><body><main class="page"><section class="shell"><div class="topbar"><div class="brand"><a class="brand-logo-link" href="https://graduate26.ru"><img class="brand-logo" src="/static/header-logo.png" alt="graduate26.ru" width="361" height="426"></a><div class="brand-copy"><h1>{escape(title)}</h1></div></div><div class="topbar-side">{language_switcher(current_lang)}{user_badge(current_user, lang=current_lang)}</div></div><nav>{nav_html(current_user, lang=current_lang)}</nav>{banner(success, 'success')}{banner(error, 'error')}{body}</section><footer class="site-footer"><p>{escape(text(current_lang, "footer"))}</p><p><a class="footer-email" href="mailto:{footer_email}">{footer_email}</a></p></footer></main><script>
+(() => {{
+  const syncTopbarLogoHeight = () => {{
+    const topbar = document.querySelector('.topbar');
+    const side = document.querySelector('.topbar-side');
+    if (!topbar || !side) {{
+      return;
+    }}
+    topbar.style.setProperty('--topbar-side-height', `${{side.offsetHeight}}px`);
+  }};
+  syncTopbarLogoHeight();
+  window.addEventListener('load', syncTopbarLogoHeight);
+  window.addEventListener('resize', syncTopbarLogoHeight);
+}})();
 (() => {{
   const links = Array.from(document.querySelectorAll('[data-lang-switch]'));
   if (!links.length) {{
@@ -192,7 +218,14 @@ def field_value(values: dict[str, str], key: str, default: str = "") -> str:
     return escape(values.get(key, default), quote=True)
 
 
-def render_select(name: str, options: tuple[str, ...], selected: str | None, *, lang: str = DEFAULT_LANGUAGE) -> str:
+def render_select(
+    name: str,
+    options: tuple[str, ...],
+    selected: str | None,
+    *,
+    lang: str = DEFAULT_LANGUAGE,
+    extra_attributes: str = "",
+) -> str:
     rendered = []
     for option in options:
         selected_attr = " selected" if selected == option else ""
@@ -206,7 +239,7 @@ def render_select(name: str, options: tuple[str, ...], selected: str | None, *, 
         rendered.append(
             f'<option value="{escape(option, quote=True)}"{selected_attr}>{escape(display_value)}</option>'
         )
-    return f'<select name="{escape(name, quote=True)}">{"".join(rendered)}</select>'
+    return f'<select name="{escape(name, quote=True)}"{extra_attributes}>{"".join(rendered)}</select>'
 
 
 def meta_row(label: str, value: str) -> str:
@@ -684,9 +717,6 @@ def render_conference_form(
     submit_button_key = "submit_application_update" if is_edit_mode else "submit_application"
     page_title_key = "conference_edit_page_title" if is_edit_mode else "conference_page_title"
 
-    publication_required_mark = ' <span class="required-mark">*</span>' if not is_edit_mode else ""
-    publication_required_attr = " required" if not is_edit_mode else ""
-
     publication_hint_parts = [text(lang, "hint_publication_file")]
     existing_publication_name = str(existing_publication_file_name or "").strip()
     if is_edit_mode and existing_publication_name:
@@ -703,6 +733,15 @@ def render_conference_form(
     values.setdefault("email", current_user["email"])
     values.setdefault("participation", PARTICIPATION_OPTIONS[0])
     values.setdefault("section", SECTION_OPTIONS[0])
+    selected_participation = str(values.get("participation") or PARTICIPATION_OPTIONS[0])
+    has_existing_publication_file = bool(existing_publication_name)
+    publication_required_by_participation = participation_requires_publication_file(selected_participation)
+    publication_required = (
+        not has_existing_publication_file and publication_required_by_participation
+    )
+    publication_required_mark_hidden_attr = "" if publication_required else " hidden"
+    publication_required_attr = " required" if publication_required else ""
+    publication_disabled_attr = "" if publication_required_by_participation else " disabled"
     precheck_section = render_precheck_section(
         lang=lang,
         precheck_error=precheck_error,
@@ -733,11 +772,11 @@ def render_conference_form(
           <label><span class="field-caption">{escape(field_label("job_title", lang=lang))}</span><input type="text" name="job_title" value="{field_value(values, 'job_title')}"></label>
           <label><span class="field-caption">{escape(field_label("phone", lang=lang))} <span class="required-mark">*</span></span><input type="tel" name="phone" placeholder="{escape(text(lang, "placeholder_phone"), quote=True)}" required value="{field_value(values, 'phone')}"></label>
           <label><span class="field-caption">{escape(text(lang, "auth_email"))} <span class="required-mark">*</span></span><input type="email" name="email" placeholder="{escape(text(lang, "placeholder_email"), quote=True)}" required value="{field_value(values, 'email')}"></label>
-          <label><span class="field-caption">{escape(field_label("participation", lang=lang))} <span class="required-mark">*</span></span>{render_select('participation', PARTICIPATION_OPTIONS, values.get('participation'), lang=lang)}<span class="field-hint">{escape(text(lang, "hint_participation_student_moscow"))}</span></label>
+          <label><span class="field-caption">{escape(field_label("participation", lang=lang))} <span class="required-mark">*</span></span>{render_select('participation', PARTICIPATION_OPTIONS, values.get('participation'), lang=lang, extra_attributes=' data-participation-select')}<span class="field-hint">{escape(text(lang, "hint_participation_student_moscow"))}</span></label>
           <label><span class="field-caption">{escape(field_label("section", lang=lang))} <span class="required-mark">*</span></span>{render_select('section', SECTION_OPTIONS, values.get('section'), lang=lang)}</label>
           <label><span class="field-caption">{escape(field_label("publication_title", lang=lang))} <span class="required-mark">*</span></span><input type="text" name="publication_title" required value="{field_value(values, 'publication_title')}"></label>
           <label><span class="field-caption">{escape(field_label("foreign_language_consultant", lang=lang))} <span class="required-mark">*</span></span><input type="text" name="foreign_language_consultant" required value="{field_value(values, 'foreign_language_consultant')}"></label>
-          <label><span class="field-caption">{escape(field_label("publication_file", lang=lang))}{publication_required_mark}</span><input type="file" name="publication_file" accept=".docx"{publication_required_attr}><span class="field-hint">{publication_hint_html}</span></label>
+          <label><span class="field-caption">{escape(field_label("publication_file", lang=lang))} <span class="required-mark" data-publication-required-mark{publication_required_mark_hidden_attr}>*</span></span><input type="file" name="publication_file" accept=".docx"{publication_required_attr}{publication_disabled_attr} data-publication-file-input data-has-existing-file="{"true" if has_existing_publication_file else "false"}"><span class="field-hint">{publication_hint_html}</span></label>
           <label><span class="field-caption">{escape(field_label("expert_opinion_file", lang=lang))}</span><input type="file" name="expert_opinion_file" accept=".docx"><span class="field-hint">{expert_hint_html}</span></label>
         </div>
         <label class="consent-row"><input type="checkbox" name="personal_data_consent" required><span>{escape(text(lang, "personal_data_consent"))}</span></label>
@@ -748,7 +787,28 @@ def render_conference_form(
           const form = document.getElementById("conference-registration-form");
           const submitButton = document.getElementById("conference-submit-button");
           if (form && submitButton) {{
+            const participationSelect = form.querySelector("[data-participation-select]");
+            const publicationFileInput = form.querySelector("[data-publication-file-input]");
+            const publicationRequiredMark = form.querySelector("[data-publication-required-mark]");
+            const optionalPublicationParticipations = {json.dumps(sorted(OPTIONAL_PUBLICATION_PARTICIPATION_OPTIONS))};
+            const syncPublicationRequirement = () => {{
+              if (!participationSelect || !publicationFileInput) {{
+                return;
+              }}
+              const publicationAllowed = !optionalPublicationParticipations.includes(participationSelect.value);
+              const hasExistingFile = publicationFileInput.dataset.hasExistingFile === "true";
+              const publicationRequired = publicationAllowed && !hasExistingFile;
+              publicationFileInput.disabled = !publicationAllowed;
+              if (!publicationAllowed) {{
+                publicationFileInput.value = "";
+              }}
+              publicationFileInput.required = publicationRequired;
+              if (publicationRequiredMark) {{
+                publicationRequiredMark.hidden = !publicationRequired;
+              }}
+            }};
             const updateSubmitState = () => {{
+              syncPublicationRequirement();
               submitButton.disabled = !form.checkValidity();
             }};
             form.addEventListener("input", updateSubmitState);

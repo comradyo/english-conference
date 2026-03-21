@@ -227,11 +227,13 @@ def build_password_reset_email_task(
     }
 
 
-def build_initial_publication_validation() -> dict[str, Any]:
+def build_initial_publication_validation(*, has_publication_file: bool = True) -> dict[str, Any]:
     queued_at = now_utc()
+    status_key = "checker_pending_status" if has_publication_file else "checker_not_required_status"
+    summary_key = "checker_pending_summary" if has_publication_file else "checker_not_required_summary"
     return {
-        "status": text(DEFAULT_LANGUAGE, "checker_pending_status"),
-        "summary": text(DEFAULT_LANGUAGE, "checker_pending_summary"),
+        "status": text(DEFAULT_LANGUAGE, status_key),
+        "summary": text(DEFAULT_LANGUAGE, summary_key),
         "errors": [],
         "checked_at": None,
         "started_at": None,
