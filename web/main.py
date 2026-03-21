@@ -5,7 +5,7 @@ from html import escape
 import httpx
 import logging
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 from bson.binary import Binary
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
@@ -59,14 +59,19 @@ from services import (
 from state import lifespan
 
 STATIC_DIR = Path(__file__).with_name("static")
-HEALTH_LOG_PATHS = frozenset({"/health", "/ready"})
+HEALTH_LOG_PATHS = ("/health", "/ready")
+_HEALTH_LOG_PATH_PREFIXES = tuple(p + "/" for p in HEALTH_LOG_PATHS)
 
 
 class _HealthEndpointAccessFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         try:
             if record.args and len(record.args) >= 3:
-                return record.args[2] not in HEALTH_LOG_PATHS  # type: ignore[index]
+                raw_path: str = record.args[2]  # type: ignore[index]
+                path = urlsplit(raw_path).path.rstrip("/") or "/"
+                return not (
+                    path in HEALTH_LOG_PATHS or path.startswith(_HEALTH_LOG_PATH_PREFIXES)
+                )
         except Exception:
             return True
         return True
