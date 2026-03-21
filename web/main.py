@@ -3,11 +3,13 @@ from __future__ import annotations
 from datetime import timedelta
 from html import escape
 import httpx
+from pathlib import Path
 from urllib.parse import quote
 
 from bson.binary import Binary
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import RedirectResponse, Response
+from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 from pymongo.errors import DuplicateKeyError
 
@@ -55,7 +57,10 @@ from services import (
 )
 from state import lifespan
 
+STATIC_DIR = Path(__file__).with_name("static")
+
 app = FastAPI(title="Conference Personal Cabinet", lifespan=lifespan)
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 PENDING_REVIEW_STATUS = REVIEW_STATUSES[0]
 REVISION_REVIEW_STATUS = REVIEW_STATUSES[2]

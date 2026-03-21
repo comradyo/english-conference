@@ -41,15 +41,21 @@ def layout(
     lang: str = DEFAULT_LANGUAGE,
 ) -> HTMLResponse:
     current_lang = resolve_language(lang)
+    footer_email = "graduate.applications@yandex.ru"
     return HTMLResponse(
         content=f"""<!DOCTYPE html>
 <html lang="{escape(current_lang, quote=True)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{escape(title)}</title>
+<link rel="icon" type="image/png" href="/static/favicon.png">
 <style>
-:root {{ --bg:#f5efe7; --panel:#fffdf9; --line:#d7d2c8; --accent:#0f5959; --soft:#d9efef; --text:#1f2529; --muted:#60696f; --danger-bg:#f8dddd; --danger-text:#7f2020; --ok-bg:#dff3e3; --ok-text:#155728; font-family:"Segoe UI",Tahoma,Geneva,Verdana,sans-serif; }}
+@font-face {{ font-family:"ALS Sector Bold"; src:url("/static/fonts/ALS_Sector-Bold.woff2") format("woff2"); font-style:normal; font-weight:700; font-display:swap; }}
+:root {{ --bg:#f5efe7; --panel:#fffdf9; --line:#d7d2c8; --accent:#0f5959; --soft:#d9efef; --text:#1f2529; --muted:#60696f; --danger-bg:#f8dddd; --danger-text:#7f2020; --ok-bg:#dff3e3; --ok-text:#155728; }}
 * {{ box-sizing:border-box; }} body {{ margin:0; min-height:100vh; color:var(--text); background:radial-gradient(circle at top right, rgba(15,89,89,.12), transparent 28%), radial-gradient(circle at bottom left, rgba(180,83,9,.1), transparent 20%), var(--bg); }}
+body, input, select, textarea, button {{ font-family:"ALS Sector Bold","Segoe UI",Tahoma,Geneva,Verdana,sans-serif; }}
 .page {{ width:min(1600px, calc(100% - 32px)); margin:28px auto; }} .shell {{ background:var(--panel); border:1px solid rgba(15,89,89,.1); border-radius:24px; padding:24px; box-shadow:0 18px 50px rgba(15,89,89,.08); }}
 .topbar, nav, .card-title {{ display:flex; gap:12px; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; }} .topbar {{ margin-bottom:18px; }} .topbar-side {{ display:grid; gap:12px; justify-items:end; }} nav {{ margin:18px 0 20px; }}
+.brand {{ --brand-logo-height:var(--topbar-side-height, 100%); --brand-logo-width:calc(var(--brand-logo-height) * 361 / 426); position:relative; display:flex; align-items:center; padding-left:calc(var(--brand-logo-width) + 12px); min-height:var(--brand-logo-height); }} .brand-copy {{ display:grid; gap:8px; min-width:0; }}
+.brand-logo-link {{ position:absolute; left:0; top:0; display:inline-flex; align-items:center; justify-content:center; width:var(--brand-logo-width); height:var(--brand-logo-height); border-radius:24px; overflow:hidden; background:rgba(15,89,89,.05); }} .brand-logo {{ display:block; width:100%; height:100%; object-fit:contain; }}
 h1 {{ margin:0; font-size:clamp(2rem, 4vw, 2.7rem); line-height:1.05; }} h2 {{ margin:0 0 14px; font-size:1.2rem; }} p {{ margin:0 0 14px; color:var(--muted); }}
 .subtitle {{ margin-top:8px; max-width:760px; }} .user-badge, nav a, .language-link {{ padding:10px 14px; border-radius:999px; font-weight:600; text-decoration:none; }}
 .user-badge {{ background:#f1f6f6; border:1px solid var(--line); color:var(--accent); }} nav a {{ background:var(--soft); color:var(--accent); }}
@@ -109,9 +115,22 @@ button {{ border:none; cursor:pointer; background:linear-gradient(135deg, #0f595
 .admin-tools {{ display:grid; gap:10px; min-width:260px; }}
 .admin-tools form {{ gap:10px; }}
 .admin-tools textarea {{ min-height:84px; }}
-.section-meta {{ color:var(--muted); font-weight:600; }} .field-caption {{ display:inline-flex; align-items:baseline; gap:4px; }} .required-mark {{ color:#a33030; font-weight:800; }} .field-hint {{ color:var(--muted); font-size:.9rem; font-weight:500; }} .consent-row {{ display:flex; align-items:flex-start; gap:10px; font-weight:600; }} .consent-row input[type="checkbox"] {{ width:18px; min-width:18px; height:18px; margin-top:2px; padding:0; border-radius:4px; accent-color:var(--accent); }} .submit-button:disabled {{ background:#c9ced3; color:#7a8288; cursor:not-allowed; }} .form-note {{ margin-top:14px; margin-bottom:0; font-size:.95rem; color:var(--muted); }} .site-footer {{ margin-top:18px; padding:14px 8px 0; text-align:center; color:var(--muted); font-size:.95rem; }}
-@media (max-width:820px) {{ .split, .grid {{ grid-template-columns:1fr; }} .shell {{ padding:18px; border-radius:18px; }} }}
-</style></head><body><main class="page"><section class="shell"><div class="topbar"><div><h1>{escape(title)}</h1></div><div class="topbar-side">{language_switcher(current_lang)}{user_badge(current_user, lang=current_lang)}</div></div><nav>{nav_html(current_user, lang=current_lang)}</nav>{banner(success, 'success')}{banner(error, 'error')}{body}</section><footer class="site-footer">{escape(text(current_lang, "footer"))}</footer></main><script>
+.section-meta {{ color:var(--muted); font-weight:600; }} .field-caption {{ display:inline-flex; align-items:baseline; gap:4px; }} .required-mark {{ color:#a33030; font-weight:800; }} .field-hint {{ color:var(--muted); font-size:.9rem; font-weight:500; }} .consent-row {{ display:flex; align-items:flex-start; gap:10px; font-weight:600; }} .consent-row input[type="checkbox"] {{ width:18px; min-width:18px; height:18px; margin-top:2px; padding:0; border-radius:4px; accent-color:var(--accent); }} .submit-button:disabled {{ background:#c9ced3; color:#7a8288; cursor:not-allowed; }} .form-note {{ margin-top:14px; margin-bottom:0; font-size:.95rem; color:var(--muted); }} .site-footer {{ margin-top:18px; padding:14px 8px 0; text-align:center; color:var(--muted); font-size:.95rem; }} .site-footer p {{ margin:0; }} .footer-email {{ color:var(--accent); text-decoration:none; }}
+@media (max-width:820px) {{ .split, .grid {{ grid-template-columns:1fr; }} .shell {{ padding:18px; border-radius:18px; }} .brand {{ padding-left:0; flex-direction:column; align-items:flex-start; gap:16px; min-height:0; }} .brand-logo-link {{ position:static; width:auto; height:auto; max-width:min(220px, 55vw); overflow:visible; }} .brand-logo {{ width:100%; height:auto; max-width:min(220px, 55vw); aspect-ratio:auto; }} }}
+</style></head><body><main class="page"><section class="shell"><div class="topbar"><div class="brand"><a class="brand-logo-link" href="https://graduate26.ru"><img class="brand-logo" src="/static/header-logo.png" alt="graduate26.ru" width="361" height="426"></a><div class="brand-copy"><h1>{escape(title)}</h1></div></div><div class="topbar-side">{language_switcher(current_lang)}{user_badge(current_user, lang=current_lang)}</div></div><nav>{nav_html(current_user, lang=current_lang)}</nav>{banner(success, 'success')}{banner(error, 'error')}{body}</section><footer class="site-footer"><p>{escape(text(current_lang, "footer"))}</p><p><a class="footer-email" href="mailto:{footer_email}">{footer_email}</a></p></footer></main><script>
+(() => {{
+  const syncTopbarLogoHeight = () => {{
+    const topbar = document.querySelector('.topbar');
+    const side = document.querySelector('.topbar-side');
+    if (!topbar || !side) {{
+      return;
+    }}
+    topbar.style.setProperty('--topbar-side-height', `${{side.offsetHeight}}px`);
+  }};
+  syncTopbarLogoHeight();
+  window.addEventListener('load', syncTopbarLogoHeight);
+  window.addEventListener('resize', syncTopbarLogoHeight);
+}})();
 (() => {{
   const links = Array.from(document.querySelectorAll('[data-lang-switch]'));
   if (!links.length) {{
