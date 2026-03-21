@@ -1,4 +1,6 @@
 reg.graduate26.ru {
     encode gzip zstd
+    @internalEndpoints path /health /ready
+    respond @internalEndpoints 404
     reverse_proxy web:8000
 }
