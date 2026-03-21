@@ -19,6 +19,7 @@ from models import (
     PasswordResetConfirmPayload,
     PasswordResetRequestPayload,
     REVIEW_STATUSES,
+    participation_requires_publication_file,
 )
 from render import (
     layout,
@@ -804,7 +805,7 @@ async def submit_conference_registration(
     section: str = Form(...),
     publication_title: str = Form(...),
     foreign_language_consultant: str = Form(...),
-    publication_file: UploadFile = File(...),
+    publication_file: UploadFile | None = File(None),
     expert_opinion_file: UploadFile | None = File(None),
 ):
     lang = request_language(request)
@@ -847,11 +848,15 @@ async def submit_conference_registration(
             publication_title=publication_title,
             foreign_language_consultant=foreign_language_consultant,
         )
-        publication_file_content = await read_docx(
-            publication_file,
-            field_label=field_label(lang, "publication_file"),
-            lang=lang,
-        )
+        publication_file_required = participation_requires_publication_file(payload.participation)
+        publication_file_content = None
+        if publication_file_required:
+            publication_file_content = await read_docx(
+                publication_file,
+                required=True,
+                field_label=field_label(lang, "publication_file"),
+                lang=lang,
+            )
         expert_opinion_content = await read_docx(
             expert_opinion_file,
             required=False,
@@ -872,7 +877,7 @@ async def submit_conference_registration(
         result.status_code = exc.status_code
         return with_language(request, result)
 
-    if publication_file_content is None:
+    if publication_file_required and publication_file_content is None:
         raise HTTPException(status_code=500, detail=text(lang, "publication_read_failed"))
 
     await request.app.state.registrations_collection.insert_one(
@@ -895,7 +900,9 @@ async def submit_conference_registration(
             "foreign_language_consultant": payload.foreign_language_consultant,
             "publication_file": file_document(publication_file, publication_file_content),
             "expert_opinion_file": file_document(expert_opinion_file, expert_opinion_content),
-            "publication_validation": build_initial_publication_validation(),
+            "publication_validation": build_initial_publication_validation(
+                has_publication_file=publication_file_content is not None,
+            ),
             "review_status": PENDING_REVIEW_STATUS,
             "comments": [],
             "created_at": now_utc(),
@@ -983,12 +990,15 @@ async def update_conference_registration(
             publication_title=publication_title,
             foreign_language_consultant=foreign_language_consultant,
         )
-        publication_file_content = await read_docx(
-            publication_file,
-            required=False,
-            field_label=field_label(lang, "publication_file"),
-            lang=lang,
-        )
+        publication_file_required = participation_requires_publication_file(payload.participation)
+        publication_file_content = None
+        if publication_file_required:
+            publication_file_content = await read_docx(
+                publication_file,
+                required=not existing_publication_file_name,
+                field_label=field_label(lang, "publication_file"),
+                lang=lang,
+            )
         expert_opinion_content = await read_docx(
             expert_opinion_file,
             required=False,
@@ -1020,7 +1030,10 @@ async def update_conference_registration(
         result.status_code = exc.status_code
         return with_language(request, result)
 
-    if publication_file_content is None and not existing_publication_file_name:
+    has_publication_file = publication_file_required and (
+        publication_file_content is not None or bool(existing_publication_file_name)
+    )
+    if publication_file_required and not has_publication_file:
         result = render_conference_form(
             current_user,
             error=text(lang, "docx_file_required", field=field_label(lang, "publication_file")),
@@ -1049,12 +1062,14 @@ async def update_conference_registration(
         "section": payload.section,
         "publication_title": payload.publication_title,
         "foreign_language_consultant": payload.foreign_language_consultant,
-        "publication_validation": build_initial_publication_validation(),
+        "publication_validation": build_initial_publication_validation(has_publication_file=has_publication_file),
         "review_status": PENDING_REVIEW_STATUS,
         "updated_at": now_utc(),
     }
-    if publication_file_content is not None:
+    if publication_file_required and publication_file_content is not None:
         update_fields["publication_file"] = file_document(publication_file, publication_file_content)
+    if not publication_file_required:
+        update_fields["publication_file"] = None
     if expert_opinion_content is not None:
         update_fields["expert_opinion_file"] = file_document(expert_opinion_file, expert_opinion_content)
 

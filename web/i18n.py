@@ -2,7 +2,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from models import PARTICIPATION_OPTIONS, REVIEW_STATUSES, SECTION_OPTIONS
+from models import (
+    PARTICIPATION_GUEST,
+    PARTICIPATION_ONLINE_PRESENTATION,
+    PARTICIPATION_ORAL_PRESENTATION,
+    PARTICIPATION_ORAL_PRESENTATION_WITHOUT_PUBLICATION,
+    PARTICIPATION_PUBLICATION_ONLY,
+    REVIEW_STATUSES,
+    SECTION_OPTIONS,
+)
 
 
 DEFAULT_LANGUAGE = "ru"
@@ -345,6 +353,14 @@ TEXTS: dict[str, dict[str, str]] = {
         "ru": "Файл публикации ожидает автоматической проверки. Обновите вкладку через несколько секунд.",
         "en": "The publication file is waiting for automatic validation. Please refresh the tab in a few seconds.",
     },
+    "checker_not_required_status": {
+        "ru": "Автопроверка не требуется.",
+        "en": "Validation is not required.",
+    },
+    "checker_not_required_summary": {
+        "ru": "Файл публикации не загружен, автоматическая проверка не требуется.",
+        "en": "No publication file was uploaded, so automatic validation is not required.",
+    },
 }
 
 FIELD_LABELS: dict[str, dict[str, str]] = {
@@ -391,16 +407,20 @@ FIELD_LABELS: dict[str, dict[str, str]] = {
 }
 
 PARTICIPATION_LABELS = {
-    PARTICIPATION_OPTIONS[0]: {"ru": PARTICIPATION_OPTIONS[0], "en": "Oral presentation"},
-    PARTICIPATION_OPTIONS[1]: {
-        "ru": PARTICIPATION_OPTIONS[1],
+    PARTICIPATION_ORAL_PRESENTATION: {"ru": PARTICIPATION_ORAL_PRESENTATION, "en": "Oral presentation"},
+    PARTICIPATION_ORAL_PRESENTATION_WITHOUT_PUBLICATION: {
+        "ru": PARTICIPATION_ORAL_PRESENTATION_WITHOUT_PUBLICATION,
+        "en": "Oral presentation without publication",
+    },
+    PARTICIPATION_ONLINE_PRESENTATION: {
+        "ru": PARTICIPATION_ONLINE_PRESENTATION,
         "en": "Online presentation (for non-residents only)",
     },
-    PARTICIPATION_OPTIONS[2]: {
-        "ru": PARTICIPATION_OPTIONS[2],
+    PARTICIPATION_PUBLICATION_ONLY: {
+        "ru": PARTICIPATION_PUBLICATION_ONLY,
         "en": "Publication only",
     },
-    PARTICIPATION_OPTIONS[3]: {"ru": PARTICIPATION_OPTIONS[3], "en": "Guest"},
+    PARTICIPATION_GUEST: {"ru": PARTICIPATION_GUEST, "en": "Guest"},
 }
 
 SECTION_LABELS = {
@@ -478,10 +498,14 @@ def review_status_label(lang: str, value: str) -> str:
 def validation_status_label(lang: str, value: str) -> str:
     if value == TEXTS["checker_pending_status"]["ru"]:
         return text(lang, "checker_pending_status")
+    if value == TEXTS["checker_not_required_status"]["ru"]:
+        return text(lang, "checker_not_required_status")
     return value
 
 
 def validation_summary_label(lang: str, value: str) -> str:
     if value == TEXTS["checker_pending_summary"]["ru"]:
         return text(lang, "checker_pending_summary")
+    if value == TEXTS["checker_not_required_summary"]["ru"]:
+        return text(lang, "checker_not_required_summary")
     return value

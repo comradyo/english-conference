@@ -16,7 +16,13 @@ from i18n import (
     validation_status_label,
     validation_summary_label,
 )
-from models import PARTICIPATION_OPTIONS, REVIEW_STATUSES, SECTION_OPTIONS
+from models import (
+    PARTICIPATION_OPTIONS,
+    PARTICIPATION_ORAL_PRESENTATION_WITHOUT_PUBLICATION,
+    REVIEW_STATUSES,
+    SECTION_OPTIONS,
+    participation_requires_publication_file,
+)
 
 
 MOSCOW_TZ = timezone(timedelta(hours=3), name="UTC+3")
@@ -192,7 +198,14 @@ def field_value(values: dict[str, str], key: str, default: str = "") -> str:
     return escape(values.get(key, default), quote=True)
 
 
-def render_select(name: str, options: tuple[str, ...], selected: str | None, *, lang: str = DEFAULT_LANGUAGE) -> str:
+def render_select(
+    name: str,
+    options: tuple[str, ...],
+    selected: str | None,
+    *,
+    lang: str = DEFAULT_LANGUAGE,
+    extra_attributes: str = "",
+) -> str:
     rendered = []
     for option in options:
         selected_attr = " selected" if selected == option else ""
@@ -206,7 +219,7 @@ def render_select(name: str, options: tuple[str, ...], selected: str | None, *, 
         rendered.append(
             f'<option value="{escape(option, quote=True)}"{selected_attr}>{escape(display_value)}</option>'
         )
-    return f'<select name="{escape(name, quote=True)}">{"".join(rendered)}</select>'
+    return f'<select name="{escape(name, quote=True)}"{extra_attributes}>{"".join(rendered)}</select>'
 
 
 def meta_row(label: str, value: str) -> str:
@@ -684,9 +697,6 @@ def render_conference_form(
     submit_button_key = "submit_application_update" if is_edit_mode else "submit_application"
     page_title_key = "conference_edit_page_title" if is_edit_mode else "conference_page_title"
 
-    publication_required_mark = ' <span class="required-mark">*</span>' if not is_edit_mode else ""
-    publication_required_attr = " required" if not is_edit_mode else ""
-
     publication_hint_parts = [text(lang, "hint_publication_file")]
     existing_publication_name = str(existing_publication_file_name or "").strip()
     if is_edit_mode and existing_publication_name:
@@ -703,6 +713,15 @@ def render_conference_form(
     values.setdefault("email", current_user["email"])
     values.setdefault("participation", PARTICIPATION_OPTIONS[0])
     values.setdefault("section", SECTION_OPTIONS[0])
+    selected_participation = str(values.get("participation") or PARTICIPATION_OPTIONS[0])
+    has_existing_publication_file = bool(existing_publication_name)
+    publication_allowed = participation_requires_publication_file(selected_participation)
+    publication_required = (
+        not has_existing_publication_file and publication_allowed
+    )
+    publication_required_mark_hidden_attr = "" if publication_required else " hidden"
+    publication_required_attr = " required" if publication_required else ""
+    publication_disabled_attr = "" if publication_allowed else " disabled"
     precheck_section = render_precheck_section(
         lang=lang,
         precheck_error=precheck_error,
@@ -733,11 +752,11 @@ def render_conference_form(
           <label><span class="field-caption">{escape(field_label("job_title", lang=lang))}</span><input type="text" name="job_title" value="{field_value(values, 'job_title')}"></label>
           <label><span class="field-caption">{escape(field_label("phone", lang=lang))} <span class="required-mark">*</span></span><input type="tel" name="phone" placeholder="{escape(text(lang, "placeholder_phone"), quote=True)}" required value="{field_value(values, 'phone')}"></label>
           <label><span class="field-caption">{escape(text(lang, "auth_email"))} <span class="required-mark">*</span></span><input type="email" name="email" placeholder="{escape(text(lang, "placeholder_email"), quote=True)}" required value="{field_value(values, 'email')}"></label>
-          <label><span class="field-caption">{escape(field_label("participation", lang=lang))} <span class="required-mark">*</span></span>{render_select('participation', PARTICIPATION_OPTIONS, values.get('participation'), lang=lang)}<span class="field-hint">{escape(text(lang, "hint_participation_student_moscow"))}</span></label>
+          <label><span class="field-caption">{escape(field_label("participation", lang=lang))} <span class="required-mark">*</span></span>{render_select('participation', PARTICIPATION_OPTIONS, values.get('participation'), lang=lang, extra_attributes=' data-participation-select')}<span class="field-hint">{escape(text(lang, "hint_participation_student_moscow"))}</span></label>
           <label><span class="field-caption">{escape(field_label("section", lang=lang))} <span class="required-mark">*</span></span>{render_select('section', SECTION_OPTIONS, values.get('section'), lang=lang)}</label>
           <label><span class="field-caption">{escape(field_label("publication_title", lang=lang))} <span class="required-mark">*</span></span><input type="text" name="publication_title" required value="{field_value(values, 'publication_title')}"></label>
           <label><span class="field-caption">{escape(field_label("foreign_language_consultant", lang=lang))} <span class="required-mark">*</span></span><input type="text" name="foreign_language_consultant" required value="{field_value(values, 'foreign_language_consultant')}"></label>
-          <label><span class="field-caption">{escape(field_label("publication_file", lang=lang))}{publication_required_mark}</span><input type="file" name="publication_file" accept=".docx"{publication_required_attr}><span class="field-hint">{publication_hint_html}</span></label>
+          <label><span class="field-caption">{escape(field_label("publication_file", lang=lang))} <span class="required-mark" data-publication-required-mark{publication_required_mark_hidden_attr}>*</span></span><input type="file" name="publication_file" accept=".docx"{publication_required_attr}{publication_disabled_attr} data-publication-file-input data-has-existing-file="{"true" if has_existing_publication_file else "false"}"><span class="field-hint">{publication_hint_html}</span></label>
           <label><span class="field-caption">{escape(field_label("expert_opinion_file", lang=lang))}</span><input type="file" name="expert_opinion_file" accept=".docx"><span class="field-hint">{expert_hint_html}</span></label>
         </div>
         <label class="consent-row"><input type="checkbox" name="personal_data_consent" required><span>{escape(text(lang, "personal_data_consent"))}</span></label>
@@ -748,7 +767,28 @@ def render_conference_form(
           const form = document.getElementById("conference-registration-form");
           const submitButton = document.getElementById("conference-submit-button");
           if (form && submitButton) {{
+            const participationSelect = form.querySelector("[data-participation-select]");
+            const publicationFileInput = form.querySelector("[data-publication-file-input]");
+            const publicationRequiredMark = form.querySelector("[data-publication-required-mark]");
+            const optionalPublicationParticipation = {escape(PARTICIPATION_ORAL_PRESENTATION_WITHOUT_PUBLICATION, quote=True)!r};
+            const syncPublicationRequirement = () => {{
+              if (!participationSelect || !publicationFileInput) {{
+                return;
+              }}
+              const publicationAllowed = participationSelect.value !== optionalPublicationParticipation;
+              const hasExistingFile = publicationFileInput.dataset.hasExistingFile === "true";
+              const publicationRequired = publicationAllowed && !hasExistingFile;
+              publicationFileInput.disabled = !publicationAllowed;
+              if (!publicationAllowed) {{
+                publicationFileInput.value = "";
+              }}
+              publicationFileInput.required = publicationRequired;
+              if (publicationRequiredMark) {{
+                publicationRequiredMark.hidden = !publicationRequired;
+              }}
+            }};
             const updateSubmitState = () => {{
+              syncPublicationRequirement();
               submitButton.disabled = !form.checkValidity();
             }};
             form.addEventListener("input", updateSubmitState);
