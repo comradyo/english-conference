@@ -18,8 +18,8 @@ from i18n import (
     validation_summary_label,
 )
 from models import (
+    OPTIONAL_PUBLICATION_PARTICIPATION_OPTIONS,
     PARTICIPATION_OPTIONS,
-    PARTICIPATION_ORAL_PRESENTATION_WITHOUT_PUBLICATION,
     REVIEW_STATUSES,
     SECTION_OPTIONS,
     participation_requires_publication_file,
@@ -790,12 +790,12 @@ def render_conference_form(
             const participationSelect = form.querySelector("[data-participation-select]");
             const publicationFileInput = form.querySelector("[data-publication-file-input]");
             const publicationRequiredMark = form.querySelector("[data-publication-required-mark]");
-            const optionalPublicationParticipation = {json.dumps(PARTICIPATION_ORAL_PRESENTATION_WITHOUT_PUBLICATION)};
+            const optionalPublicationParticipations = {json.dumps(sorted(OPTIONAL_PUBLICATION_PARTICIPATION_OPTIONS))};
             const syncPublicationRequirement = () => {{
               if (!participationSelect || !publicationFileInput) {{
                 return;
               }}
-              const publicationAllowed = participationSelect.value !== optionalPublicationParticipation;
+              const publicationAllowed = !optionalPublicationParticipations.includes(participationSelect.value);
               const hasExistingFile = publicationFileInput.dataset.hasExistingFile === "true";
               const publicationRequired = publicationAllowed && !hasExistingFile;
               publicationFileInput.disabled = !publicationAllowed;
