@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import timedelta
 from html import escape
 import httpx
+import logging
 from pathlib import Path
 from urllib.parse import quote
 
@@ -58,7 +59,26 @@ from services import (
 from state import lifespan
 
 STATIC_DIR = Path(__file__).with_name("static")
+HEALTH_LOG_PATHS = frozenset({"/health", "/ready"})
 
+
+class _HealthEndpointAccessFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            if record.args and len(record.args) >= 3:
+                return record.args[2] not in HEALTH_LOG_PATHS  # type: ignore[index]
+        except Exception:
+            return True
+        return True
+
+
+def register_health_endpoint_log_filter() -> None:
+    access_logger = logging.getLogger("uvicorn.access")
+    if any(isinstance(existing_filter, _HealthEndpointAccessFilter) for existing_filter in access_logger.filters):
+        return
+    access_logger.addFilter(_HealthEndpointAccessFilter())
+
+register_health_endpoint_log_filter()
 app = FastAPI(title="Conference Personal Cabinet", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
