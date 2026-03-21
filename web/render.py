@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timedelta, timezone
 from html import escape
 from typing import Any
@@ -789,7 +790,7 @@ def render_conference_form(
             const participationSelect = form.querySelector("[data-participation-select]");
             const publicationFileInput = form.querySelector("[data-publication-file-input]");
             const publicationRequiredMark = form.querySelector("[data-publication-required-mark]");
-            const optionalPublicationParticipation = {escape(PARTICIPATION_ORAL_PRESENTATION_WITHOUT_PUBLICATION, quote=True)!r};
+            const optionalPublicationParticipation = {json.dumps(PARTICIPATION_ORAL_PRESENTATION_WITHOUT_PUBLICATION)};
             const syncPublicationRequirement = () => {{
               if (!participationSelect || !publicationFileInput) {{
                 return;
