@@ -723,6 +723,20 @@ def render_conference_form(
             f'<button type="button" class="modal-close" data-modal-close aria-label="{escape(text(lang, "modal_close"), quote=True)}">&times;</button></div>'
             "</div></div>"
         )
+    file_requirements_url = (
+        "https://graduate26.ru/ru/for-participants"
+        if lang == "ru"
+        else "https://graduate26.ru/en/for-participants"
+    )
+    file_requirements_link_html = (
+        f'<a href="{escape(file_requirements_url, quote=True)}" target="_blank" rel="noopener noreferrer">'
+        f'{escape(text(lang, "file_requirements_link"))}</a>'
+    )
+    file_requirements_text_html = text(
+        lang,
+        "file_requirements_consent",
+        requirements_link=file_requirements_link_html,
+    )
     privacy_policy_link_html = (
         '<a href="https://bmstu.ru/about/obrabotka-dannyh" target="_blank" rel="noopener noreferrer">'
         f'{escape(text(lang, "privacy_policy_link"))}</a>'
@@ -751,6 +765,7 @@ def render_conference_form(
           <label><span class="field-caption">{escape(field_label("expert_opinion_file", lang=lang))}</span><input type="file" name="expert_opinion_file" accept=".docx"><span class="field-hint">{expert_hint_html}</span></label>
           <label><span class="field-caption">{escape(field_label("review_file", lang=lang))}</span><input type="file" name="review_file" accept=".docx"><span class="field-hint">{review_hint_html}</span></label>
         </div>
+        <label class="consent-row"><input type="checkbox" name="file_requirements_consent" required><span>{file_requirements_text_html}</span></label>
         <label class="consent-row"><input type="checkbox" name="personal_data_consent" required><span>{consent_text_html}</span></label>
         <button id="conference-submit-button" class="submit-button" type="submit" disabled>{escape(text(lang, submit_button_key))}</button>
       </form>

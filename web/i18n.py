@@ -186,6 +186,11 @@ TEXTS: dict[str, dict[str, str]] = {
         "ru": "Текущий файл: {filename}. Если новый файл не выбран, останется текущий.",
         "en": "Current file: {filename}. If no new file is selected, the current one will be kept.",
     },
+    "file_requirements_consent": {
+        "ru": "Ознакомился с {requirements_link} к оформлению файлов",
+        "en": "I have read the {requirements_link} for file formatting",
+    },
+    "file_requirements_link": {"ru": "требованиями", "en": "requirements"},
     "personal_data_consent": {
         "ru": "Согласен на обработку персональных данных и соглашаюсь с условиями {policy_link}",
         "en": "I agree to the processing of personal data and accept the terms of the {policy_link}",
