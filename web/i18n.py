@@ -187,9 +187,10 @@ TEXTS: dict[str, dict[str, str]] = {
         "en": "Current file: {filename}. If no new file is selected, the current one will be kept.",
     },
     "personal_data_consent": {
-        "ru": "Согласен на обработку персональных данных",
-        "en": "I agree to the processing of personal data",
+        "ru": "Согласен на обработку персональных данных и соглашаюсь с условиями {policy_link}",
+        "en": "I agree to the processing of personal data and accept the terms of the {policy_link}",
     },
+    "privacy_policy_link": {"ru": "политики конфиденциальности", "en": "privacy policy"},
     "modal_close": {"ru": "Закрыть", "en": "Close"},
     "modal_success_title": {"ru": "Заявка сохранена", "en": "Application saved"},
     "submit_application": {"ru": "Сохранить заявку", "en": "Save application"},

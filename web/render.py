@@ -723,6 +723,11 @@ def render_conference_form(
             f'<button type="button" class="modal-close" data-modal-close aria-label="{escape(text(lang, "modal_close"), quote=True)}">&times;</button></div>'
             "</div></div>"
         )
+    privacy_policy_link_html = (
+        '<a href="https://bmstu.ru/about/obrabotka-dannyh" target="_blank" rel="noopener noreferrer">'
+        f'{escape(text(lang, "privacy_policy_link"))}</a>'
+    )
+    consent_text_html = text(lang, "personal_data_consent", policy_link=privacy_policy_link_html)
     body = f"""
     {success_modal}
     {precheck_section}
@@ -746,7 +751,7 @@ def render_conference_form(
           <label><span class="field-caption">{escape(field_label("expert_opinion_file", lang=lang))}</span><input type="file" name="expert_opinion_file" accept=".docx"><span class="field-hint">{expert_hint_html}</span></label>
           <label><span class="field-caption">{escape(field_label("review_file", lang=lang))}</span><input type="file" name="review_file" accept=".docx"><span class="field-hint">{review_hint_html}</span></label>
         </div>
-        <label class="consent-row"><input type="checkbox" name="personal_data_consent" required><span>{escape(text(lang, "personal_data_consent"))}</span></label>
+        <label class="consent-row"><input type="checkbox" name="personal_data_consent" required><span>{consent_text_html}</span></label>
         <button id="conference-submit-button" class="submit-button" type="submit" disabled>{escape(text(lang, submit_button_key))}</button>
       </form>
       <script>
