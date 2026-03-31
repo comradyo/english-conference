@@ -442,47 +442,6 @@ def render_precheck_section(
     """
 
 
-def _legacy_render_object_fields(record: dict[str, Any]) -> str:
-    rows: list[str] = []
-
-    def append_field(path: str, value: Any) -> None:
-        if isinstance(value, dict):
-            summary = "Не указано" if not value else optional_value(value.get("filename"), empty="См. вложенные поля")
-            rows.append(meta_row(field_label(path), summary))
-            if not value:
-                return
-            for nested_key, nested_value in value.items():
-                if nested_key == "data":
-                    continue
-                append_field(f"{path}.{nested_key}", nested_value)
-            return
-        if path == "review_status":
-            status = str(value or REVIEW_STATUSES[0])
-            rows.append(meta_html_row(field_label(path), render_status_badge(status)))
-            return
-        if path == "admin_comment":
-            text = str(value or "").strip() or "Комментарий пока не добавлен."
-            rows.append(meta_row(field_label(path), text))
-            return
-        if path == "created_at" and isinstance(value, datetime):
-            rows.append(meta_row(field_label(path), format_dt(value)))
-            return
-        if value is None:
-            empty_value = "Не загружено" if path == "expert_opinion_file" else "Не указано"
-            rows.append(meta_row(field_label(path), empty_value))
-            return
-        text = str(value).strip()
-        if not text:
-            empty_value = "Не загружено" if path == "expert_opinion_file" else "Не указано"
-            rows.append(meta_row(field_label(path), empty_value))
-            return
-        rows.append(meta_row(field_label(path), text))
-
-    for key, value in record.items():
-        append_field(key, value)
-    return "".join(rows)
-
-
 def render_object_fields(record: dict[str, Any], *, lang: str = DEFAULT_LANGUAGE) -> str:
     rows: list[str] = []
 
@@ -504,8 +463,8 @@ def render_object_fields(record: dict[str, Any], *, lang: str = DEFAULT_LANGUAGE
                     continue
                 append_field(f"{path}.{nested_key}", nested_value)
             return
-        if path in {'publication_file.content_type', 'expert_opinion_file.content_type', 'publication_file.filename',
-                    'expert_opinion_file.filename', 'last_name', 'first_name', 'middle_name', 'owner_email', 'comments',
+        if path in {'publication_file.content_type', 'expert_opinion_file.content_type', 'review_file.content_type', 'publication_file.filename',
+                    'expert_opinion_file.filename', 'review_file.filename', 'last_name', 'first_name', 'middle_name', 'owner_email', 'comments',
                     'admin_comment'}:
             return
         if path == "publication_validation.status":
@@ -528,12 +487,12 @@ def render_object_fields(record: dict[str, Any], *, lang: str = DEFAULT_LANGUAGE
             rows.append(meta_html_row(field_label(path, lang=lang), "<br>".join(escape(item) for item in parts)))
             return
         if value is None:
-            empty_value = text(lang, "not_uploaded") if path == "expert_opinion_file" else text(lang, "not_specified")
+            empty_value = text(lang, "not_uploaded") if path in {"expert_opinion_file", "review_file"} else text(lang, "not_specified")
             rows.append(meta_row(field_label(path, lang=lang), empty_value))
             return
         value_text = str(value).strip()
         if not value_text:
-            empty_value = text(lang, "not_uploaded") if path == "expert_opinion_file" else text(lang, "not_specified")
+            empty_value = text(lang, "not_uploaded") if path in {"expert_opinion_file", "review_file"} else text(lang, "not_specified")
             rows.append(meta_row(field_label(path, lang=lang), empty_value))
             return
         if path == "participation":
@@ -705,6 +664,7 @@ def render_conference_form(
     edit_registration_id: str | None = None,
     existing_publication_file_name: str | None = None,
     existing_expert_opinion_file_name: str | None = None,
+    existing_review_file_name: str | None = None,
     lang: str = DEFAULT_LANGUAGE,
 ) -> HTMLResponse:
     is_edit_mode = bool(str(edit_registration_id or "").strip())
@@ -728,6 +688,12 @@ def render_conference_form(
     if is_edit_mode and existing_expert_name:
         expert_hint_parts.append(text(lang, "current_file_name_hint", filename=existing_expert_name))
     expert_hint_html = "<br>".join(escape(part) for part in expert_hint_parts)
+
+    review_hint_parts = [text(lang, "hint_review_file")]
+    existing_review_name = str(existing_review_file_name or "").strip()
+    if is_edit_mode and existing_review_name:
+        review_hint_parts.append(text(lang, "current_file_name_hint", filename=existing_review_name))
+    review_hint_html = "<br>".join(escape(part) for part in review_hint_parts)
 
     values = dict(values or {})
     values.setdefault("email", current_user["email"])
@@ -757,6 +723,25 @@ def render_conference_form(
             f'<button type="button" class="modal-close" data-modal-close aria-label="{escape(text(lang, "modal_close"), quote=True)}">&times;</button></div>'
             "</div></div>"
         )
+    file_requirements_url = (
+        "https://graduate26.ru/ru/for-participants"
+        if lang == "ru"
+        else "https://graduate26.ru/en/for-participants"
+    )
+    file_requirements_link_html = (
+        f'<a href="{escape(file_requirements_url, quote=True)}" target="_blank" rel="noopener noreferrer">'
+        f'{escape(text(lang, "file_requirements_link"))}</a>'
+    )
+    file_requirements_text_html = text(
+        lang,
+        "file_requirements_consent",
+        requirements_link=file_requirements_link_html,
+    )
+    privacy_policy_link_html = (
+        '<a href="https://bmstu.ru/about/obrabotka-dannyh" target="_blank" rel="noopener noreferrer">'
+        f'{escape(text(lang, "privacy_policy_link"))}</a>'
+    )
+    consent_text_html = text(lang, "personal_data_consent", policy_link=privacy_policy_link_html)
     body = f"""
     {success_modal}
     {precheck_section}
@@ -778,8 +763,10 @@ def render_conference_form(
           <label><span class="field-caption">{escape(field_label("foreign_language_consultant", lang=lang))} <span class="required-mark">*</span></span><input type="text" name="foreign_language_consultant" required value="{field_value(values, 'foreign_language_consultant')}"></label>
           <label><span class="field-caption">{escape(field_label("publication_file", lang=lang))} <span class="required-mark" data-publication-required-mark{publication_required_mark_hidden_attr}>*</span></span><input type="file" name="publication_file" accept=".docx"{publication_required_attr}{publication_disabled_attr} data-publication-file-input data-has-existing-file="{"true" if has_existing_publication_file else "false"}"><span class="field-hint">{publication_hint_html}</span></label>
           <label><span class="field-caption">{escape(field_label("expert_opinion_file", lang=lang))}</span><input type="file" name="expert_opinion_file" accept=".docx"><span class="field-hint">{expert_hint_html}</span></label>
+          <label><span class="field-caption">{escape(field_label("review_file", lang=lang))}</span><input type="file" name="review_file" accept=".docx"><span class="field-hint">{review_hint_html}</span></label>
         </div>
-        <label class="consent-row"><input type="checkbox" name="personal_data_consent" required><span>{escape(text(lang, "personal_data_consent"))}</span></label>
+        <label class="consent-row"><input type="checkbox" name="file_requirements_consent" required><span>{file_requirements_text_html}</span></label>
+        <label class="consent-row"><input type="checkbox" name="personal_data_consent" required><span>{consent_text_html}</span></label>
         <button id="conference-submit-button" class="submit-button" type="submit" disabled>{escape(text(lang, submit_button_key))}</button>
       </form>
       <script>
@@ -873,66 +860,10 @@ def render_conference_form(
     return layout(text(lang, page_title_key), body, current_user=current_user, error=error, lang=lang)
 
 
-def _legacy_render_record_card(record: dict[str, Any], *, admin_mode: bool) -> str:
-    publication_file = record.get("publication_file") or {}
-    expert_opinion_file = record.get("expert_opinion_file") or {}
-    review_status = str(record.get("review_status") or REVIEW_STATUSES[0])
-    comment_text = str(record.get("admin_comment") or "").strip() or "Комментарий пока не добавлен."
-    full_name = " ".join(
-        part
-        for part in [
-            str(record.get("last_name") or "").strip(),
-            str(record.get("first_name") or "").strip(),
-            str(record.get("middle_name") or "").strip(),
-        ]
-        if part
-    )
-    rows = [
-        meta_row("Фамилия", str(record.get("last_name", ""))),
-        meta_row("Имя", str(record.get("first_name", ""))),
-        meta_row("Отчество", optional_value(record.get("middle_name"))),
-        meta_row("Место учёбы", str(record.get("place_of_study", ""))),
-        meta_row("Кафедра", optional_value(record.get("department"))),
-        meta_row("Место работы", optional_value(record.get("place_of_work"))),
-        meta_row("Должность", optional_value(record.get("job_title"))),
-        meta_row("Телефон для связи", str(record.get("phone", ""))),
-        meta_row("Электронная почта", str(record.get("email", ""))),
-        meta_row("Участие", str(record.get("participation", ""))),
-        meta_row("Секция", str(record.get("section", ""))),
-        meta_row("Название публикации", str(record.get("publication_title", ""))),
-        meta_row("ФИО Консультанта по иностранному языку", str(record.get("foreign_language_consultant", ""))),
-        meta_row("Файл публикации", file_name(publication_file)),
-        meta_row(
-            "Размер файла публикации",
-            f"{int(publication_file.get('size_bytes', 0))} байт" if publication_file.get("filename") else "Не указано",
-        ),
-        meta_row("Экспертное заключение", file_name(expert_opinion_file)),
-        meta_row(
-            "Размер экспертного заключения",
-            f"{int(expert_opinion_file.get('size_bytes', 0))} байт" if expert_opinion_file.get("filename") else "Не указано",
-        ),
-        meta_row("Создано", format_dt(record.get("created_at"))),
-    ]
-    if admin_mode:
-        rows.insert(0, meta_html_row("Статус", render_status_badge(review_status)))
-        rows.append(meta_row("Владелец аккаунта", str(record.get("owner_email", ""))))
-        comment_block = meta_row("Комментарий к заявке", comment_text)
-        highlights_html = ""
-    else:
-        comment_html = escape(comment_text).replace("\n", "<br>")
-        highlights_html = (
-            '<section class="record-highlights"><br>'
-            f'{render_highlight_block("Статус", render_status_badge(review_status, large=True))}'
-            f'{render_highlight_block("Комментарий к заявке", comment_html, extra_class="record-highlight-comment")}'
-            "</section>"
-        )
-        comment_block = ""
-    return f'<article class="card"><div class="card-title"><strong>{escape(full_name or "Заявка без имени")}</strong><span>{escape(str(record.get("_id", "")))}</span></div>{highlights_html}<div class="meta">{"".join(rows)}{comment_block}</div></article>'
-
-
 def render_record_card(record: dict[str, Any], *, admin_mode: bool, lang: str = DEFAULT_LANGUAGE) -> str:
     publication_file = record.get("publication_file") or {}
     expert_opinion_file = record.get("expert_opinion_file") or {}
+    review_file = record.get("review_file") or {}
     publication_validation = record.get("publication_validation") or {}
     review_status = str(record.get("review_status") or REVIEW_STATUSES[0])
     record_id = str(record.get("_id") or "").strip()
@@ -972,6 +903,11 @@ def render_record_card(record: dict[str, Any], *, admin_mode: bool, lang: str = 
             text(lang, "expert_file_size"),
             f"{int(expert_opinion_file.get('size_bytes', 0))} {text(lang, 'bytes_unit')}" if expert_opinion_file.get("filename") else text(lang, "not_specified"),
         ),
+        meta_row(field_label("review_file", lang=lang), file_name(review_file, lang=lang)),
+        meta_row(
+            text(lang, "review_file_size"),
+            f"{int(review_file.get('size_bytes', 0))} {text(lang, 'bytes_unit')}" if review_file.get("filename") else text(lang, "not_specified"),
+        ),
         meta_row(field_label("form_language", lang=lang), form_language_label(record.get("form_language"), lang=lang)),
         meta_row(field_label("created_at", lang=lang), format_dt(record.get("created_at"), lang=lang)),
     ]
@@ -983,7 +919,7 @@ def render_record_card(record: dict[str, Any], *, admin_mode: bool, lang: str = 
         author_comment_form_html = ""
     else:
         action_buttons: list[str] = []
-        if review_status == REVIEW_STATUSES[2] and record_id:
+        if review_status in {REVIEW_STATUSES[0], REVIEW_STATUSES[2]} and record_id:
             action_buttons.append(
                 '<div class="record-actions">'
                 f'<a class="action-link action-link-warning" href="/conference/register/{escape(record_id, quote=True)}/edit">{escape(text(lang, "edit_rejected_application"))}</a>'
@@ -1061,6 +997,7 @@ def render_admin_table(
             ) or f'<div>{escape(text(lang, "unnamed_person"))}</div>'
             publication_file = record.get("publication_file") or {}
             expert_opinion_file = record.get("expert_opinion_file") or {}
+            review_file = record.get("review_file") or {}
             review_status = str(record.get("review_status") or REVIEW_STATUSES[0])
             is_selected = bool(selected_registration_id and selected_registration_id == record_id)
             status_options = "".join(
@@ -1075,6 +1012,10 @@ def render_admin_table(
             if expert_opinion_file.get("filename"):
                 download_links.append(
                     f'<a class="action-link" href="/all_applications/file/{record_id}/expert-opinion">{escape(text(lang, "admin_download_expert"))}</a>'
+                )
+            if review_file.get("filename"):
+                download_links.append(
+                    f'<a class="action-link" href="/all_applications/file/{record_id}/review">{escape(text(lang, "admin_download_review"))}</a>'
                 )
             downloads_html = "".join(download_links)
             contacts_cell = (
