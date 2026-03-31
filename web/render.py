@@ -904,7 +904,7 @@ def render_record_card(record: dict[str, Any], *, admin_mode: bool, lang: str = 
         author_comment_form_html = ""
     else:
         action_buttons: list[str] = []
-        if review_status == REVIEW_STATUSES[2] and record_id:
+        if review_status in {REVIEW_STATUSES[0], REVIEW_STATUSES[2]} and record_id:
             action_buttons.append(
                 '<div class="record-actions">'
                 f'<a class="action-link action-link-warning" href="/conference/register/{escape(record_id, quote=True)}/edit">{escape(text(lang, "edit_rejected_application"))}</a>'

@@ -84,6 +84,7 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 PENDING_REVIEW_STATUS = REVIEW_STATUSES[0]
 REVISION_REVIEW_STATUS = REVIEW_STATUSES[2]
+EDITABLE_REVIEW_STATUSES = (PENDING_REVIEW_STATUS, REVISION_REVIEW_STATUS)
 
 
 def with_language(request: Request, response):
@@ -182,7 +183,7 @@ def registration_file_name(record: dict[str, object], field_name: str) -> str:
     return str(file_info.get("filename") or "").strip()
 
 
-async def find_revision_registration_for_user(
+async def find_editable_registration_for_user(
     request: Request,
     *,
     registration_id: str,
@@ -195,7 +196,7 @@ async def find_revision_registration_for_user(
         {
             "_id": object_id,
             "owner_user_id": owner_user_id,
-            "review_status": REVISION_REVIEW_STATUS,
+            "review_status": {"$in": list(EDITABLE_REVIEW_STATUSES)},
         },
         {"publication_file.data": 0, "expert_opinion_file.data": 0, "review_file.data": 0},
     )
@@ -755,7 +756,7 @@ async def edit_conference_registration_page(
     if response:
         return response
 
-    existing_record = await find_revision_registration_for_user(
+    existing_record = await find_editable_registration_for_user(
         request,
         registration_id=registration_id,
         owner_user_id=current_user["_id"],
@@ -980,7 +981,7 @@ async def update_conference_registration(
     if response:
         return response
 
-    existing_record = await find_revision_registration_for_user(
+    existing_record = await find_editable_registration_for_user(
         request,
         registration_id=registration_id,
         owner_user_id=current_user["_id"],
@@ -1121,11 +1122,13 @@ async def update_conference_registration(
     if review_file_content is not None:
         update_fields["review_file"] = file_document(review_file, review_file_content)
 
+    expected_updated_at = existing_record.get("updated_at")
     update_result = await request.app.state.registrations_collection.update_one(
         {
             "_id": existing_record["_id"],
             "owner_user_id": current_user["_id"],
-            "review_status": REVISION_REVIEW_STATUS,
+            "review_status": {"$in": list(EDITABLE_REVIEW_STATUSES)},
+            "updated_at": expected_updated_at,
         },
         {"$set": update_fields},
     )

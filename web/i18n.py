@@ -56,8 +56,8 @@ TEXTS: dict[str, dict[str, str]] = {
         "en": "The application has been updated and resubmitted for review.",
     },
     "notice_edit_not_allowed": {
-        "ru": "Редактирование доступно только для заявок со статусом «На доработке».",
-        "en": "Editing is available only for applications with the \"Needs revision\" status.",
+        "ru": "Редактирование доступно только для заявок со статусом «На рассмотрении» или «На доработке».",
+        "en": "Editing is available only for applications with the \"Under review\" or \"Needs revision\" status.",
     },
     "notice_registration_deleted": {
         "ru": "Заявка удалена.",
