@@ -169,7 +169,7 @@ TEXTS: dict[str, dict[str, str]] = {
     "placeholder_department": {"ru": "Л2", "en": "student"},
     "placeholder_phone": {"ru": "+79001000102", "en": "+79001000102"},
     "placeholder_email": {"ru": "example@bmstu.ru", "en": "example@bmstu.ru"},
-    "hint_publication_file": {"ru": "Формат docx, размер <10Мб", "en": "docx, <10Мб"},
+    "hint_publication_file": {"ru": "Формат docx, размер <10Мб", "en": "docx, <10 MB"},
     "hint_participation_student_moscow": {
         "ru": "Для студентов московских ВУЗов возможно только выступление с презентацией.",
         "en": "For students of Moscow universities only oral presentation participation is allowed.",
@@ -180,7 +180,7 @@ TEXTS: dict[str, dict[str, str]] = {
     },
     "hint_review_file": {
         "ru": "Формат docx, размер <10Мб",
-        "en": "docx, <10Мб",
+        "en": "docx, <10 MB",
     },
     "current_file_name_hint": {
         "ru": "Текущий файл: {filename}. Если новый файл не выбран, останется текущий.",
