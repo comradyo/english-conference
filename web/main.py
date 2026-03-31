@@ -197,7 +197,7 @@ async def find_revision_registration_for_user(
             "owner_user_id": owner_user_id,
             "review_status": REVISION_REVIEW_STATUS,
         },
-        {"publication_file.data": 0, "expert_opinion_file.data": 0},
+        {"publication_file.data": 0, "expert_opinion_file.data": 0, "review_file.data": 0},
     )
 
 
@@ -284,6 +284,7 @@ async def _download_admin_file_impl(
     file_map = {
         "publication": ("publication_file", field_label(lang, "publication_file"), "publication.docx"),
         "expert-opinion": ("expert_opinion_file", field_label(lang, "expert_opinion_file"), "expert-opinion.docx"),
+        "review": ("review_file", field_label(lang, "review_file"), "review.docx"),
     }
     selected_file = file_map.get(file_kind)
     if selected_file is None:
@@ -382,7 +383,7 @@ async def _save_admin_comment_impl(
 
     record = await request.app.state.registrations_collection.find_one(
         {"_id": object_id},
-        {"publication_file.data": 0, "expert_opinion_file.data": 0},
+        {"publication_file.data": 0, "expert_opinion_file.data": 0, "review_file.data": 0},
     )
     if not record:
         return build_error_page(
@@ -770,6 +771,7 @@ async def edit_conference_registration_page(
             edit_registration_id=str(existing_record["_id"]),
             existing_publication_file_name=registration_file_name(existing_record, "publication_file"),
             existing_expert_opinion_file_name=registration_file_name(existing_record, "expert_opinion_file"),
+            existing_review_file_name=registration_file_name(existing_record, "review_file"),
             lang=lang,
         ),
     )
@@ -832,6 +834,7 @@ async def submit_conference_registration(
     foreign_language_consultant: str = Form(...),
     publication_file: UploadFile | None = File(None),
     expert_opinion_file: UploadFile | None = File(None),
+    review_file: UploadFile | None = File(None),
 ):
     lang = request_language(request)
     current_user, response = await require_user(request)
@@ -888,6 +891,12 @@ async def submit_conference_registration(
             field_label=field_label(lang, "expert_opinion_file"),
             lang=lang,
         )
+        review_file_content = await read_docx(
+            review_file,
+            required=False,
+            field_label=field_label(lang, "review_file"),
+            lang=lang,
+        )
     except ValidationError as exc:
         result = render_conference_form(
             current_user,
@@ -925,6 +934,7 @@ async def submit_conference_registration(
             "foreign_language_consultant": payload.foreign_language_consultant,
             "publication_file": file_document(publication_file, publication_file_content),
             "expert_opinion_file": file_document(expert_opinion_file, expert_opinion_content),
+            "review_file": file_document(review_file, review_file_content),
             "publication_validation": build_initial_publication_validation(
                 has_publication_file=publication_file_content is not None,
             ),
@@ -963,6 +973,7 @@ async def update_conference_registration(
     foreign_language_consultant: str = Form(...),
     publication_file: UploadFile | None = File(None),
     expert_opinion_file: UploadFile | None = File(None),
+    review_file: UploadFile | None = File(None),
 ):
     lang = request_language(request)
     current_user, response = await require_user(request)
@@ -994,6 +1005,7 @@ async def update_conference_registration(
     )
     existing_publication_file_name = registration_file_name(existing_record, "publication_file")
     existing_expert_file_name = registration_file_name(existing_record, "expert_opinion_file")
+    existing_review_file_name = registration_file_name(existing_record, "review_file")
 
     middle_name_value = optional_form_value(middle_name)
     department_value = optional_form_value(department)
@@ -1030,6 +1042,12 @@ async def update_conference_registration(
             field_label=field_label(lang, "expert_opinion_file"),
             lang=lang,
         )
+        review_file_content = await read_docx(
+            review_file,
+            required=False,
+            field_label=field_label(lang, "review_file"),
+            lang=lang,
+        )
     except ValidationError as exc:
         result = render_conference_form(
             current_user,
@@ -1038,6 +1056,7 @@ async def update_conference_registration(
             edit_registration_id=str(existing_record["_id"]),
             existing_publication_file_name=existing_publication_file_name,
             existing_expert_opinion_file_name=existing_expert_file_name,
+            existing_review_file_name=existing_review_file_name,
             lang=lang,
         )
         result.status_code = 400
@@ -1050,6 +1069,7 @@ async def update_conference_registration(
             edit_registration_id=str(existing_record["_id"]),
             existing_publication_file_name=existing_publication_file_name,
             existing_expert_opinion_file_name=existing_expert_file_name,
+            existing_review_file_name=existing_review_file_name,
             lang=lang,
         )
         result.status_code = exc.status_code
@@ -1066,6 +1086,7 @@ async def update_conference_registration(
             edit_registration_id=str(existing_record["_id"]),
             existing_publication_file_name=existing_publication_file_name,
             existing_expert_opinion_file_name=existing_expert_file_name,
+            existing_review_file_name=existing_review_file_name,
             lang=lang,
         )
         result.status_code = 400
@@ -1097,6 +1118,8 @@ async def update_conference_registration(
         update_fields["publication_file"] = None
     if expert_opinion_content is not None:
         update_fields["expert_opinion_file"] = file_document(expert_opinion_file, expert_opinion_content)
+    if review_file_content is not None:
+        update_fields["review_file"] = file_document(review_file, review_file_content)
 
     update_result = await request.app.state.registrations_collection.update_one(
         {
@@ -1186,7 +1209,7 @@ async def my_registrations(request: Request):
 
     records = await request.app.state.registrations_collection.find(
         {"owner_user_id": current_user["_id"]},
-        {"publication_file.data": 0, "expert_opinion_file.data": 0},
+        {"publication_file.data": 0, "expert_opinion_file.data": 0, "review_file.data": 0},
     ).sort("created_at", -1).to_list(length=200)
 
     return with_language(
@@ -1213,7 +1236,7 @@ async def admin_registrations(request: Request):
 
     records = await request.app.state.registrations_collection.find(
         {},
-        {"publication_file.data": 0, "expert_opinion_file.data": 0},
+        {"publication_file.data": 0, "expert_opinion_file.data": 0, "review_file.data": 0},
     ).sort("created_at", -1).to_list(length=500)
     return with_language(
         request,
