@@ -57,16 +57,16 @@ TEXTS: dict[str, dict[str, str]] = {
         "en": "The application has been updated and resubmitted for review.",
     },
     "notice_edit_not_allowed": {
-        "ru": "Редактирование доступно только для заявок со статусом «На рассмотрении» или «На доработке».",
-        "en": "Editing is available only for applications with the \"Under review\" or \"Needs revision\" status.",
+        "ru": "Редактирование недоступно для заявки в её текущем статусе.",
+        "en": "Editing is not available for the application in its current status.",
     },
     "notice_registration_deleted": {
         "ru": "Заявка удалена.",
         "en": "The application has been deleted.",
     },
     "notice_delete_not_allowed": {
-        "ru": "Удаление доступно только для вашей заявки со статусом «На рассмотрении».",
-        "en": "Deletion is available only for your application with the \"Under review\" status.",
+        "ru": "Удаление недоступно для заявки в её текущем статусе.",
+        "en": "Deletion is not available for the application in its current status.",
     },
     "notice_password_reset_email_queued": {
         "ru": "Если аккаунт с таким email существует, мы отправили ссылку для смены пароля.",
@@ -205,6 +205,7 @@ TEXTS: dict[str, dict[str, str]] = {
         "ru": "Поля, обязательные для заполнения.",
         "en": "Fields marked with * are required.",
     },
+    "not_required_short": {"ru": "Не требуется", "en": "Not required"},
     "validation_result_label": {
         "ru": "Результат автопроверки файла",
         "en": "Automatic validation result",

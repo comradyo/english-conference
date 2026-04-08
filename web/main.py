@@ -9,7 +9,7 @@ from urllib.parse import quote
 
 from bson.binary import Binary
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import RedirectResponse, Response
+from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 from pymongo.errors import DuplicateKeyError
@@ -22,7 +22,10 @@ from models import (
     PasswordResetConfirmPayload,
     PasswordResetRequestPayload,
     PARTICIPATION_STATUSES,
+    PENDING_REVIEW_STATUS,
     REVIEW_STATUSES,
+    author_can_delete_registration,
+    author_can_edit_registration,
     participation_requires_publication_file,
 )
 from render import (
@@ -83,10 +86,7 @@ register_health_endpoint_log_filter()
 app = FastAPI(title="Conference Personal Cabinet", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-PENDING_REVIEW_STATUS = REVIEW_STATUSES[0]
 PENDING_PARTICIPATION_STATUS = PARTICIPATION_STATUSES[0]
-REVISION_REVIEW_STATUS = REVIEW_STATUSES[2]
-EDITABLE_REVIEW_STATUSES = (PENDING_REVIEW_STATUS, REVISION_REVIEW_STATUS)
 
 
 def with_language(request: Request, response):
@@ -194,14 +194,22 @@ async def find_editable_registration_for_user(
     object_id = parse_object_id(registration_id)
     if object_id is None:
         return None
-    return await request.app.state.registrations_collection.find_one(
+    record = await request.app.state.registrations_collection.find_one(
         {
             "_id": object_id,
             "owner_user_id": owner_user_id,
-            "review_status": {"$in": list(EDITABLE_REVIEW_STATUSES)},
         },
         {"publication_file.data": 0, "expert_opinion_file.data": 0, "review_file.data": 0},
     )
+    if not record:
+        return None
+    if not author_can_edit_registration(
+        participation=str(record.get("participation") or ""),
+        participation_status=str(record.get("participation_status") or PENDING_PARTICIPATION_STATUS),
+        review_status=str(record.get("review_status") or PENDING_REVIEW_STATUS),
+    ):
+        return None
+    return record
 
 
 async def request_publication_precheck(
@@ -362,17 +370,6 @@ async def _save_admin_comment_impl(
     if response:
         return with_language(request, response)
 
-    if review_status not in REVIEW_STATUSES:
-        return build_error_page(
-            request,
-            current_user=current_user,
-            lang=lang,
-            title_key="error_title",
-            body_html=f'<div class="empty">{escape(text(lang, "invalid_status_body"))}</div>',
-            error_text=text(lang, "invalid_status_error"),
-            status_code=400,
-        )
-
     object_id = parse_object_id(registration_id)
     if object_id is None:
         return build_error_page(
@@ -415,12 +412,31 @@ async def _save_admin_comment_impl(
             status_code=400,
         )
 
+    publication_file_required = participation_requires_publication_file(str(record.get("participation") or ""))
+    if publication_file_required:
+        resolved_review_status = (
+            review_status.strip()
+            or str(record.get("review_status") or PENDING_REVIEW_STATUS)
+        )
+        if resolved_review_status not in REVIEW_STATUSES:
+            return build_error_page(
+                request,
+                current_user=current_user,
+                lang=lang,
+                title_key="error_title",
+                body_html=f'<div class="empty">{escape(text(lang, "invalid_status_body"))}</div>',
+                error_text=text(lang, "invalid_status_error"),
+                status_code=400,
+            )
+    else:
+        resolved_review_status = str(record.get("review_status") or PENDING_REVIEW_STATUS)
+
     trimmed_comment = comment_text.strip()
     appended_comment = None
     update_doc: dict[str, dict[str, object]] = {
         "$set": {
             "participation_status": resolved_participation_status,
-            "review_status": review_status,
+            "review_status": resolved_review_status,
             "updated_at": now_utc(),
         }
     }
@@ -454,7 +470,7 @@ async def _save_admin_comment_impl(
         updated_comments.append(appended_comment)
     updated_record["comments"] = updated_comments
     updated_record["participation_status"] = resolved_participation_status
-    updated_record["review_status"] = review_status
+    updated_record["review_status"] = resolved_review_status
     back_link_html = (
         f'<a href="/all_applications?selected={registration_id}">'
         f'{escape(text(lang, "back_to_records_link"))}</a>'
@@ -1151,7 +1167,6 @@ async def update_conference_registration(
         {
             "_id": existing_record["_id"],
             "owner_user_id": current_user["_id"],
-            "review_status": {"$in": list(EDITABLE_REVIEW_STATUSES)},
             "updated_at": expected_updated_at,
         },
         {"$set": update_fields},
@@ -1214,11 +1229,28 @@ async def delete_author_registration(
     if object_id is None:
         return localized_redirect(request, "/my-registrations?notice=delete_not_allowed", status_code=303)
 
+    record = await request.app.state.registrations_collection.find_one(
+        {
+            "_id": object_id,
+            "owner_user_id": current_user["_id"],
+        },
+        {"updated_at": 1, "participation": 1, "participation_status": 1, "review_status": 1},
+    )
+    if not record:
+        return localized_redirect(request, "/my-registrations?notice=delete_not_allowed", status_code=303)
+
+    if not author_can_delete_registration(
+        participation=str(record.get("participation") or ""),
+        participation_status=str(record.get("participation_status") or PENDING_PARTICIPATION_STATUS),
+        review_status=str(record.get("review_status") or PENDING_REVIEW_STATUS),
+    ):
+        return localized_redirect(request, "/my-registrations?notice=delete_not_allowed", status_code=303)
+
     delete_result = await request.app.state.registrations_collection.delete_one(
         {
             "_id": object_id,
             "owner_user_id": current_user["_id"],
-            "review_status": PENDING_REVIEW_STATUS,
+            "updated_at": record.get("updated_at"),
         }
     )
     if delete_result.deleted_count == 0:

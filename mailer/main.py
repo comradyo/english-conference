@@ -101,6 +101,7 @@ def build_registration_update_message(settings: Settings, payload: dict[str, Any
 
     participant_name = str(payload.get("participant_name") or "Участник").strip() or "Участник"
     publication_title = str(payload.get("publication_title") or "Без названия").strip() or "Без названия"
+    publication_status_required = bool(payload.get("publication_status_required", True))
     participation_status = str(payload.get("participation_status") or "На рассмотрении").strip() or "На рассмотрении"
     review_status = str(payload.get("review_status") or "На рассмотрении").strip() or "На рассмотрении"
     admin_comment = str(payload.get("admin_comment") or "Комментарий не указан.").strip() or "Комментарий не указан."
@@ -109,43 +110,51 @@ def build_registration_update_message(settings: Settings, payload: dict[str, Any
     participation_status_en = PARTICIPATION_STATUS_EN.get(participation_status, participation_status)
     review_status_en = REVIEW_STATUS_EN.get(review_status, review_status)
 
+    lines = [
+        "Здравствуйте!",
+        "",
+        "По вашей заявке на конференцию есть обновление.",
+        f"ID заявки: {registration_id or 'Не указан'}",
+        f"Участник: {participant_name}",
+        f"Название публикации: {publication_title}",
+        f"Статус участия: {participation_status}",
+    ]
+    if publication_status_required:
+        lines.append(f"Статус публикации: {review_status}")
+    lines.extend(
+        [
+            f"Комментарий администратора: {admin_comment}",
+            f"Время обновления: {updated_at} (МСК)",
+            "",
+            "Это письмо отправлено автоматически.",
+            "",
+            "------------------------------------------------------------",
+            "",
+            "Hello!",
+            "",
+            "Your conference application has been updated.",
+            f"Application ID: {registration_id or 'Not specified'}",
+            f"Participant: {participant_name}",
+            f"Publication title: {publication_title}",
+            f"Participation status: {participation_status_en}",
+        ]
+    )
+    if publication_status_required:
+        lines.append(f"Publication status: {review_status_en}")
+    lines.extend(
+        [
+            f"Administrator comment: {admin_comment}",
+            f"Updated at: {updated_at} (MSK)",
+            "",
+            "This email was sent automatically.",
+        ]
+    )
+
     message = EmailMessage()
     message["Subject"] = "Обновление заявки на конференцию / Conference application update"
     message["From"] = settings.notification_email_sender
     message["To"] = recipient
-    message.set_content(
-        "\n".join(
-            [
-                "Здравствуйте!",
-                "",
-                "По вашей заявке на конференцию есть обновление.",
-                f"ID заявки: {registration_id or 'Не указан'}",
-                f"Участник: {participant_name}",
-                f"Название публикации: {publication_title}",
-                f"Статус участия: {participation_status}",
-                f"Статус публикации: {review_status}",
-                f"Комментарий администратора: {admin_comment}",
-                f"Время обновления: {updated_at} (МСК)",
-                "",
-                "Это письмо отправлено автоматически.",
-                "",
-                "------------------------------------------------------------",
-                "",
-                "Hello!",
-                "",
-                "Your conference application has been updated.",
-                f"Application ID: {registration_id or 'Not specified'}",
-                f"Participant: {participant_name}",
-                f"Publication title: {publication_title}",
-                f"Participation status: {participation_status_en}",
-                f"Publication status: {review_status_en}",
-                f"Administrator comment: {admin_comment}",
-                f"Updated at: {updated_at} (MSK)",
-                "",
-                "This email was sent automatically.",
-            ]
-        )
-    )
+    message.set_content("\n".join(lines))
     return message
 
 

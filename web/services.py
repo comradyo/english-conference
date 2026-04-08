@@ -9,7 +9,12 @@ from pydantic import ValidationError
 
 from config import Settings
 from i18n import DEFAULT_LANGUAGE, LANGUAGE_COOKIE_NAME, resolve_language, text
-from models import MAX_FILE_SIZE_BYTES, PARTICIPATION_STATUSES, REVIEW_STATUSES
+from models import (
+    MAX_FILE_SIZE_BYTES,
+    PARTICIPATION_STATUSES,
+    REVIEW_STATUSES,
+    participation_requires_publication_file,
+)
 
 
 def now_utc() -> datetime:
@@ -252,6 +257,7 @@ def build_registration_update_email_task(record: dict[str, Any], *, lang: str = 
     middle_name = str(record.get("middle_name") or "").strip()
     full_name = " ".join(part for part in [last_name, first_name, middle_name] if part) or text(DEFAULT_LANGUAGE, "participant_fallback")
     publication_title = str(record.get("publication_title") or "").strip() or text(DEFAULT_LANGUAGE, "untitled_publication")
+    publication_status_required = participation_requires_publication_file(str(record.get("participation") or "").strip())
     participation_status = str(record.get("participation_status") or "").strip() or PARTICIPATION_STATUSES[0]
     review_status = str(record.get("review_status") or "").strip() or REVIEW_STATUSES[0]
     admin_comment = text(DEFAULT_LANGUAGE, "comment_not_specified")
@@ -281,6 +287,7 @@ def build_registration_update_email_task(record: dict[str, Any], *, lang: str = 
             "recipient_email": recipient,
             "participant_name": full_name,
             "publication_title": publication_title,
+            "publication_status_required": publication_status_required,
             "participation_status": participation_status,
             "review_status": review_status,
             "admin_comment": admin_comment,
