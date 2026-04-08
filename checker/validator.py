@@ -32,10 +32,12 @@ class Validator:
         self.check_reference_format()
         return self.errors, self.errors_eng
 
+    # Убирает лишние пробелы
     @staticmethod
     def _normalize_text(text: str) -> str:
         return re.sub(r"\s+", " ", text).strip()
 
+    # Итерируется по цепочке стилей (видимо, стили идут не массивом, а связным списком) 
     @staticmethod
     def _iter_style_chain(style):
         seen = set()
@@ -45,6 +47,7 @@ class Validator:
             seen.add(id(current_style))
             current_style = current_style.base_style
 
+    # Вычисляет, какое выравнивание используется в параграфе
     @classmethod
     def _effective_alignment(cls, paragraph):
         if paragraph.alignment is not None:
@@ -57,6 +60,7 @@ class Validator:
 
         return None
 
+    # Проверяет, что стиль (или предки, от которых он наследуется), является полужирным
     @classmethod
     def _style_font_bold(cls, style) -> bool | None:
         for current_style in cls._iter_style_chain(style):
@@ -64,6 +68,7 @@ class Validator:
                 return current_style.font.bold
         return None
 
+    # Проверяет, что в параграфе есть жирный текст
     @classmethod
     def _paragraph_has_bold_text(cls, paragraph) -> bool:
         paragraph_style_bold = cls._style_font_bold(paragraph.style)
@@ -89,15 +94,18 @@ class Validator:
 
         return False
 
+    # Проверяет, что параграф является центрированным
     @classmethod
     def _is_centered(cls, paragraph) -> bool:
         return cls._effective_alignment(paragraph) == WD_ALIGN_PARAGRAPH.CENTER
 
+    # Проверяет, что параграф является подписью к изображению/таблице
     @classmethod
     def _is_caption_paragraph(cls, paragraph) -> bool:
         text = cls._normalize_text(paragraph.text).lower()
         return text.startswith(cls.CAPTION_PREFIXES)
 
+    # Первые *limit* штук непустых параграфов
     @classmethod
     def _leading_non_empty_paragraphs(cls, paragraphs, limit: int):
         found = []
