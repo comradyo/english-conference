@@ -1147,8 +1147,10 @@ async def update_conference_registration(
         "publication_title": payload.publication_title,
         "foreign_language_consultant": payload.foreign_language_consultant,
         "publication_validation": build_initial_publication_validation(has_publication_file=has_publication_file),
-        "participation_status": str(
-            existing_record.get("participation_status") or PENDING_PARTICIPATION_STATUS
+        "participation_status": (
+            PENDING_PARTICIPATION_STATUS
+            if not publication_file_required
+            else str(existing_record.get("participation_status") or PENDING_PARTICIPATION_STATUS)
         ),
         "review_status": PENDING_REVIEW_STATUS,
         "updated_at": now_utc(),
