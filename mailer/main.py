@@ -25,6 +25,11 @@ REVIEW_STATUS_EN = {
     "На доработке": "Needs revision",
     "Отклонена": "Rejected",
 }
+PARTICIPATION_STATUS_EN = {
+    "На рассмотрении": "Under review",
+    "Отклонено": "Rejected",
+    "Подтверждено. Ждём вас на конференции": "Confirmed. We are waiting for you at the conference",
+}
 
 
 def now_utc() -> datetime:
@@ -96,10 +101,12 @@ def build_registration_update_message(settings: Settings, payload: dict[str, Any
 
     participant_name = str(payload.get("participant_name") or "Участник").strip() or "Участник"
     publication_title = str(payload.get("publication_title") or "Без названия").strip() or "Без названия"
+    participation_status = str(payload.get("participation_status") or "На рассмотрении").strip() or "На рассмотрении"
     review_status = str(payload.get("review_status") or "На рассмотрении").strip() or "На рассмотрении"
     admin_comment = str(payload.get("admin_comment") or "Комментарий не указан.").strip() or "Комментарий не указан."
     registration_id = str(payload.get("registration_id") or "").strip()
     updated_at = now_utc().astimezone(MOSCOW_TZ).strftime("%d.%m.%Y %H:%M")
+    participation_status_en = PARTICIPATION_STATUS_EN.get(participation_status, participation_status)
     review_status_en = REVIEW_STATUS_EN.get(review_status, review_status)
 
     message = EmailMessage()
@@ -115,7 +122,8 @@ def build_registration_update_message(settings: Settings, payload: dict[str, Any
                 f"ID заявки: {registration_id or 'Не указан'}",
                 f"Участник: {participant_name}",
                 f"Название публикации: {publication_title}",
-                f"Статус заявки: {review_status}",
+                f"Статус участия: {participation_status}",
+                f"Статус публикации: {review_status}",
                 f"Комментарий администратора: {admin_comment}",
                 f"Время обновления: {updated_at} (МСК)",
                 "",
@@ -129,7 +137,8 @@ def build_registration_update_message(settings: Settings, payload: dict[str, Any
                 f"Application ID: {registration_id or 'Not specified'}",
                 f"Participant: {participant_name}",
                 f"Publication title: {publication_title}",
-                f"Application status: {review_status_en}",
+                f"Participation status: {participation_status_en}",
+                f"Publication status: {review_status_en}",
                 f"Administrator comment: {admin_comment}",
                 f"Updated at: {updated_at} (MSK)",
                 "",

@@ -21,6 +21,7 @@ from models import (
     ConferenceRegistrationPayload,
     PasswordResetConfirmPayload,
     PasswordResetRequestPayload,
+    PARTICIPATION_STATUSES,
     REVIEW_STATUSES,
     participation_requires_publication_file,
 )
@@ -83,6 +84,7 @@ app = FastAPI(title="Conference Personal Cabinet", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 PENDING_REVIEW_STATUS = REVIEW_STATUSES[0]
+PENDING_PARTICIPATION_STATUS = PARTICIPATION_STATUSES[0]
 REVISION_REVIEW_STATUS = REVIEW_STATUSES[2]
 EDITABLE_REVIEW_STATUSES = (PENDING_REVIEW_STATUS, REVISION_REVIEW_STATUS)
 
@@ -351,6 +353,7 @@ async def _download_admin_file_impl(
 async def _save_admin_comment_impl(
     registration_id: str,
     request: Request,
+    participation_status: str,
     review_status: str,
     comment_text: str,
 ):
@@ -397,10 +400,26 @@ async def _save_admin_comment_impl(
             status_code=404,
         )
 
+    resolved_participation_status = (
+        participation_status.strip()
+        or str(record.get("participation_status") or PENDING_PARTICIPATION_STATUS)
+    )
+    if resolved_participation_status not in PARTICIPATION_STATUSES:
+        return build_error_page(
+            request,
+            current_user=current_user,
+            lang=lang,
+            title_key="error_title",
+            body_html=f'<div class="empty">{escape(text(lang, "invalid_participation_status_body"))}</div>',
+            error_text=text(lang, "invalid_participation_status_error"),
+            status_code=400,
+        )
+
     trimmed_comment = comment_text.strip()
     appended_comment = None
     update_doc: dict[str, dict[str, object]] = {
         "$set": {
+            "participation_status": resolved_participation_status,
             "review_status": review_status,
             "updated_at": now_utc(),
         }
@@ -434,6 +453,7 @@ async def _save_admin_comment_impl(
     if appended_comment is not None:
         updated_comments.append(appended_comment)
     updated_record["comments"] = updated_comments
+    updated_record["participation_status"] = resolved_participation_status
     updated_record["review_status"] = review_status
     back_link_html = (
         f'<a href="/all_applications?selected={registration_id}">'
@@ -939,6 +959,7 @@ async def submit_conference_registration(
             "publication_validation": build_initial_publication_validation(
                 has_publication_file=publication_file_content is not None,
             ),
+            "participation_status": PENDING_PARTICIPATION_STATUS,
             "review_status": PENDING_REVIEW_STATUS,
             "comments": [],
             "created_at": now_utc(),
@@ -1110,6 +1131,9 @@ async def update_conference_registration(
         "publication_title": payload.publication_title,
         "foreign_language_consultant": payload.foreign_language_consultant,
         "publication_validation": build_initial_publication_validation(has_publication_file=has_publication_file),
+        "participation_status": str(
+            existing_record.get("participation_status") or PENDING_PARTICIPATION_STATUS
+        ),
         "review_status": PENDING_REVIEW_STATUS,
         "updated_at": now_utc(),
     }
@@ -1269,10 +1293,17 @@ async def download_admin_file(
 async def save_admin_comment(
     registration_id: str,
     request: Request,
+    participation_status: str = Form(""),
     review_status: str = Form(""),
     comment_text: str = Form(""),
 ):
-    return await _save_admin_comment_impl(registration_id, request, review_status, comment_text)
+    return await _save_admin_comment_impl(
+        registration_id,
+        request,
+        participation_status,
+        review_status,
+        comment_text,
+    )
 
 
 @app.get("/health", include_in_schema=False)

@@ -8,6 +8,7 @@ from models import (
     PARTICIPATION_ORAL_PRESENTATION,
     PARTICIPATION_ORAL_PRESENTATION_WITHOUT_PUBLICATION,
     PARTICIPATION_PUBLICATION_ONLY,
+    PARTICIPATION_STATUSES,
     REVIEW_STATUSES,
     SECTION_OPTIONS,
 )
@@ -36,8 +37,8 @@ TEXTS: dict[str, dict[str, str]] = {
     "notice_login_required": {"ru": "Сначала войдите в личный кабинет.", "en": "Please sign in first."},
     "notice_logged_out": {"ru": "Сеанс завершён.", "en": "You have been signed out."},
     "notice_comment_saved": {
-        "ru": "Комментарий и статус заявки сохранены.",
-        "en": "The comment and application status have been saved.",
+        "ru": "Комментарий и статусы заявки сохранены.",
+        "en": "The comment and application statuses have been saved.",
     },
     "notice_comment_added": {
         "ru": "Комментарий добавлен.",
@@ -226,7 +227,8 @@ TEXTS: dict[str, dict[str, str]] = {
         "ru": "Удалить заявку? Действие нельзя отменить.",
         "en": "Delete the application? This action cannot be undone.",
     },
-    "highlight_status": {"ru": "Статус", "en": "Status"},
+    "highlight_participation_status": {"ru": "Статус участия", "en": "Participation status"},
+    "highlight_publication_status": {"ru": "Статус публикации", "en": "Publication status"},
     "highlight_validation": {
         "ru": "Автопроверка файла публикации",
         "en": "Automatic publication file validation",
@@ -238,8 +240,8 @@ TEXTS: dict[str, dict[str, str]] = {
         "en": "Click a table row to open tools for the selected application.",
     },
     "admin_tools_desc": {
-        "ru": "Вы можете скачать файлы, изменить статус и оставить комментарий к заявке.",
-        "en": "You can download files, change the status, and leave a comment for the application.",
+        "ru": "Вы можете скачать файлы, изменить статусы и оставить комментарий к заявке.",
+        "en": "You can download files, change the statuses, and leave a comment for the application.",
     },
     "admin_download_publication": {"ru": "Скачать публикацию", "en": "Download publication"},
     "admin_download_expert": {"ru": "Скачать экспертное заключение", "en": "Download expert opinion"},
@@ -249,7 +251,9 @@ TEXTS: dict[str, dict[str, str]] = {
     "admin_table_contacts": {"ru": "Контакты", "en": "Contacts"},
     "admin_table_participation": {"ru": "Участие", "en": "Participation"},
     "admin_table_publication": {"ru": "Публикация", "en": "Publication"},
-    "admin_table_status": {"ru": "Статус", "en": "Status"},
+    "admin_table_status": {"ru": "Статус публикации", "en": "Publication status"},
+    "admin_table_participation_status": {"ru": "Статус участия", "en": "Participation status"},
+    "admin_table_publication_status": {"ru": "Статус публикации", "en": "Publication status"},
     "admin_table_created_at": {"ru": "Создано", "en": "Created"},
     "section_count": {"ru": "({count} заявок)", "en": "({count} applications)"},
     "forbidden_title": {"ru": "Доступ запрещён", "en": "Access denied"},
@@ -271,8 +275,19 @@ TEXTS: dict[str, dict[str, str]] = {
         "ru": "Некорректный идентификатор заявки.",
         "en": "Invalid application identifier.",
     },
-    "invalid_status_body": {"ru": "Указан недопустимый статус заявки.", "en": "An invalid application status was provided."},
-    "invalid_status_error": {"ru": "Недопустимый статус заявки.", "en": "Invalid application status."},
+    "invalid_status_body": {
+        "ru": "Указан недопустимый статус публикации.",
+        "en": "An invalid publication status was provided.",
+    },
+    "invalid_status_error": {"ru": "Недопустимый статус публикации.", "en": "Invalid publication status."},
+    "invalid_participation_status_body": {
+        "ru": "Указан недопустимый статус участия.",
+        "en": "An invalid participation status was provided.",
+    },
+    "invalid_participation_status_error": {
+        "ru": "Недопустимый статус участия.",
+        "en": "Invalid participation status.",
+    },
     "email_task_runtime_body": {
         "ru": "Изменения в заявке сохранены, но задачу на отправку письма поставить не удалось. {link}",
         "en": "The application changes were saved, but the email task could not be queued. {link}",
@@ -416,7 +431,8 @@ FIELD_LABELS: dict[str, dict[str, str]] = {
     "review_file.filename": {"ru": "Рецензия: имя", "en": "Review: name"},
     "review_file.content_type": {"ru": "Рецензия: тип", "en": "Review: type"},
     "review_file.size_bytes": {"ru": "Рецензия: размер", "en": "Review: size"},
-    "review_status": {"ru": "Статус", "en": "Status"},
+    "participation_status": {"ru": "Статус участия", "en": "Participation status"},
+    "review_status": {"ru": "Статус публикации", "en": "Publication status"},
     "admin_comment": {"ru": "Комментарий к заявке", "en": "Application comment"},
     "comments": {"ru": "Комментарии к заявке", "en": "Application comments"},
     "created_at": {"ru": "Создано", "en": "Created"},
@@ -457,6 +473,15 @@ REVIEW_STATUS_LABELS = {
     REVIEW_STATUSES[1]: {"ru": REVIEW_STATUSES[1], "en": "Accepted"},
     REVIEW_STATUSES[2]: {"ru": REVIEW_STATUSES[2], "en": "Needs revision"},
     REVIEW_STATUSES[3]: {"ru": REVIEW_STATUSES[3], "en": "Rejected"},
+}
+
+PARTICIPATION_STATUS_LABELS = {
+    PARTICIPATION_STATUSES[0]: {"ru": PARTICIPATION_STATUSES[0], "en": "Under review"},
+    PARTICIPATION_STATUSES[1]: {"ru": PARTICIPATION_STATUSES[1], "en": "Rejected"},
+    PARTICIPATION_STATUSES[2]: {
+        "ru": PARTICIPATION_STATUSES[2],
+        "en": "Confirmed. We are waiting for you at the conference",
+    },
 }
 
 
@@ -506,6 +531,13 @@ def section_label(lang: str, value: str) -> str:
 
 def review_status_label(lang: str, value: str) -> str:
     labels = REVIEW_STATUS_LABELS.get(value)
+    if not labels:
+        return value
+    return labels.get(resolve_language(lang), labels[DEFAULT_LANGUAGE])
+
+
+def participation_status_label(lang: str, value: str) -> str:
+    labels = PARTICIPATION_STATUS_LABELS.get(value)
     if not labels:
         return value
     return labels.get(resolve_language(lang), labels[DEFAULT_LANGUAGE])

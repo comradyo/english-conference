@@ -38,6 +38,11 @@ SECTION_OPTIONS = (
 )
 
 REVIEW_STATUSES = ("На рассмотрении", "Принята", "На доработке", "Отклонена")
+PARTICIPATION_STATUSES = (
+    "На рассмотрении",
+    "Отклонено",
+    "Подтверждено. Ждём вас на конференции",
+)
 MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
 
 NonEmptyText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
