@@ -4,3 +4,5 @@ __pycache__
 *.docx
 checker/test.py
 mongo-backups/
+venv/
+

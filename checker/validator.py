@@ -119,8 +119,10 @@ class Validator:
                 if len(parts) > 1:
                     keywords = [k.strip() for k in parts[1].split(";")]
                     if not (5 <= len(keywords) <= 10):
-                        self.errors.append("Ключевых слов должно быть от 5 до 10")
-                        self.errors_eng.append("There should be from 5 to 10 keywords")
+                        keywords = [k.strip() for k in parts[1].split(",")]
+                        if not (5 <= len(keywords) <= 10):
+                            self.errors.append("Ключевых слов должно быть от 5 до 10")
+                            self.errors_eng.append("There should be from 5 to 10 keywords")
                 return
         self.errors.append("Ключевые слова не найдены")
         self.errors_eng.append("Keywords of the article were not found")
@@ -132,7 +134,6 @@ class Validator:
                 abstract_text = p.text.lower().strip()
                 abstract_text = abstract_text.replace(" ", "")
                 text_len = len(abstract_text) - len("abstract.")
-                print(text_len)
                 if not (300 <= text_len <= 500):
                     self.errors.append("Аннотация на английском должна содержать от 300 до 500 знаков без учёта пробелов")
                     self.errors_eng.append("The abstract in English should contain from 300 to 500 characters without spaces")
