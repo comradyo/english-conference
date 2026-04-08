@@ -10,6 +10,7 @@ from i18n import (
     field_label as localized_field_label,
     notice_text,
     participation_label,
+    participation_status_label,
     resolve_language,
     review_status_label,
     section_label,
@@ -20,8 +21,11 @@ from i18n import (
 from models import (
     OPTIONAL_PUBLICATION_PARTICIPATION_OPTIONS,
     PARTICIPATION_OPTIONS,
+    PARTICIPATION_STATUSES,
     REVIEW_STATUSES,
     SECTION_OPTIONS,
+    author_can_delete_registration,
+    author_can_edit_registration,
     participation_requires_publication_file,
 )
 
@@ -103,7 +107,7 @@ button {{ border:none; cursor:pointer; background:linear-gradient(135deg, #0f595
 .section-group + .section-group {{ margin-top:16px; }}
 .section-summary {{ cursor:pointer; padding:16px 18px; font-weight:700; }}
 .table-wrap {{ overflow-x:auto; padding:0 18px 18px; }}
-.records-table {{ width:100%; border-collapse:collapse; min-width:1100px; }}
+.records-table {{ width:100%; border-collapse:collapse; min-width:1280px; }}
 .records-table th, .records-table td {{ padding:12px 10px; vertical-align:top; border-top:1px solid var(--line); text-align:left; }}
 .records-table th {{ color:var(--muted); font-size:.9rem; font-weight:700; }}
 .records-table tbody tr:hover {{ background:rgba(15,89,89,.03); }}
@@ -232,6 +236,8 @@ def render_select(
         display_value = option
         if name == "participation":
             display_value = participation_label(lang, option)
+        elif name == "participation_status":
+            display_value = participation_status_label(lang, option)
         elif name == "section":
             display_value = section_label(lang, option)
         elif name == "review_status":
@@ -304,21 +310,36 @@ def render_validation_details_html(validation_info: dict[str, Any] | None, *, la
     return f"{summary}<br><br>{errors_html}"
 
 
-def status_tone_class(status: str) -> str:
+def status_tone_class(status: str, *, kind: str = "review") -> str:
+    if kind == "participation":
+        mapping = {
+            PARTICIPATION_STATUSES[0]: "status-pending",
+            PARTICIPATION_STATUSES[1]: "status-rejected",
+            PARTICIPATION_STATUSES[2]: "status-accepted",
+        }
+        return mapping.get(status, "status-pending")
+
     mapping = {
-        "На рассмотрении": "status-pending",
-        "Принята": "status-accepted",
-        "На доработке": "status-revision",
-        "Отклонена": "status-rejected",
+        REVIEW_STATUSES[0]: "status-pending",
+        REVIEW_STATUSES[1]: "status-accepted",
+        REVIEW_STATUSES[2]: "status-revision",
+        REVIEW_STATUSES[3]: "status-rejected",
     }
     return mapping.get(status, "status-pending")
 
 
-def render_status_badge(status: str, *, large: bool = False, lang: str = DEFAULT_LANGUAGE) -> str:
-    classes = ["status-pill", status_tone_class(status)]
+def render_status_badge(
+    status: str,
+    *,
+    kind: str = "review",
+    large: bool = False,
+    lang: str = DEFAULT_LANGUAGE,
+) -> str:
+    classes = ["status-pill", status_tone_class(status, kind=kind)]
     if large:
         classes.append("status-pill-large")
-    return f'<span class="{" ".join(classes)}">{escape(review_status_label(lang, status))}</span>'
+    label = participation_status_label(lang, status) if kind == "participation" else review_status_label(lang, status)
+    return f'<span class="{" ".join(classes)}">{escape(label)}</span>'
 
 
 def render_highlight_block(label: str, body_html: str, *, extra_class: str = "") -> str:
@@ -395,6 +416,10 @@ def field_label(path: str, *, lang: str = DEFAULT_LANGUAGE) -> str:
     return localized_field_label(lang, path)
 
 
+def publication_status_required(record: dict[str, Any]) -> bool:
+    return participation_requires_publication_file(str(record.get("participation") or "").strip())
+
+
 def form_language_label(value: Any, *, lang: str = DEFAULT_LANGUAGE) -> str:
     value_text = str(value or "").strip().lower()
     if not value_text:
@@ -444,6 +469,7 @@ def render_precheck_section(
 
 def render_object_fields(record: dict[str, Any], *, lang: str = DEFAULT_LANGUAGE) -> str:
     rows: list[str] = []
+    show_publication_status = publication_status_required(record)
 
     def append_field(path: str, value: Any) -> None:
         if isinstance(value, dict):
@@ -471,7 +497,18 @@ def render_object_fields(record: dict[str, Any], *, lang: str = DEFAULT_LANGUAGE
             status_value = validation_status_label(lang, str(value or ""))
             rows.append(meta_row(field_label(path, lang=lang), status_value or text(lang, "not_specified")))
             return
+        if path == "participation_status":
+            status = str(value or PARTICIPATION_STATUSES[0])
+            rows.append(
+                meta_html_row(
+                    field_label(path, lang=lang),
+                    render_status_badge(status, kind="participation", lang=lang),
+                )
+            )
+            return
         if path == "review_status":
+            if not show_publication_status:
+                return
             status = str(value or REVIEW_STATUSES[0])
             rows.append(meta_html_row(field_label(path, lang=lang), render_status_badge(status, lang=lang)))
             return
@@ -503,7 +540,12 @@ def render_object_fields(record: dict[str, Any], *, lang: str = DEFAULT_LANGUAGE
             value_text = form_language_label(value_text, lang=lang)
         rows.append(meta_row(field_label(path, lang=lang), value_text))
 
+    append_field("participation_status", record.get("participation_status") or PARTICIPATION_STATUSES[0])
+    if show_publication_status:
+        append_field("review_status", record.get("review_status") or REVIEW_STATUSES[0])
     for key, value in record.items():
+        if key in {"participation_status", "review_status"}:
+            continue
         append_field(key, value)
     return "".join(rows)
 
@@ -865,7 +907,19 @@ def render_record_card(record: dict[str, Any], *, admin_mode: bool, lang: str = 
     expert_opinion_file = record.get("expert_opinion_file") or {}
     review_file = record.get("review_file") or {}
     publication_validation = record.get("publication_validation") or {}
+    participation_status = str(record.get("participation_status") or PARTICIPATION_STATUSES[0])
     review_status = str(record.get("review_status") or REVIEW_STATUSES[0])
+    show_publication_status = publication_status_required(record)
+    can_edit = author_can_edit_registration(
+        participation=str(record.get("participation") or ""),
+        participation_status=participation_status,
+        review_status=review_status,
+    )
+    can_delete = author_can_delete_registration(
+        participation=str(record.get("participation") or ""),
+        participation_status=participation_status,
+        review_status=review_status,
+    )
     record_id = str(record.get("_id") or "").strip()
     comments_html = render_comments_thread_html(record, lang=lang)
     validation_summary = validation_summary_text(publication_validation, lang=lang)
@@ -912,20 +966,34 @@ def render_record_card(record: dict[str, Any], *, admin_mode: bool, lang: str = 
         meta_row(field_label("created_at", lang=lang), format_dt(record.get("created_at"), lang=lang)),
     ]
     if admin_mode:
-        rows.insert(0, meta_html_row(text(lang, "highlight_status"), render_status_badge(review_status, lang=lang)))
+        if show_publication_status:
+            rows.insert(
+                0,
+                meta_html_row(
+                    text(lang, "highlight_publication_status"),
+                    render_status_badge(review_status, lang=lang),
+                ),
+            )
+        rows.insert(
+            0,
+            meta_html_row(
+                text(lang, "highlight_participation_status"),
+                render_status_badge(participation_status, kind="participation", lang=lang),
+            ),
+        )
         rows.append(meta_row(text(lang, "owner_account_email"), str(record.get("owner_email", ""))))
         comment_block = render_highlight_block(text(lang, "highlight_comment"), comments_html, extra_class="record-highlight-comment")
         highlights_html = ""
         author_comment_form_html = ""
     else:
         action_buttons: list[str] = []
-        if review_status in {REVIEW_STATUSES[0], REVIEW_STATUSES[2]} and record_id:
+        if can_edit and record_id:
             action_buttons.append(
                 '<div class="record-actions">'
                 f'<a class="action-link action-link-warning" href="/conference/register/{escape(record_id, quote=True)}/edit">{escape(text(lang, "edit_rejected_application"))}</a>'
                 "</div>"
             )
-        if review_status == REVIEW_STATUSES[0] and record_id:
+        if can_delete and record_id:
             action_buttons.append(
                 f'<form method="post" action="/my-registrations/delete/{escape(record_id, quote=True)}" class="record-actions" '
                 f'onsubmit="return confirm(\'{escape(text(lang, "delete_application_confirm"), quote=True)}\');">'
@@ -933,9 +1001,16 @@ def render_record_card(record: dict[str, Any], *, admin_mode: bool, lang: str = 
                 "</form>"
             )
         actions_html = "".join(action_buttons)
+        publication_status_highlight_html = ""
+        if show_publication_status:
+            publication_status_highlight_html = render_highlight_block(
+                text(lang, "highlight_publication_status"),
+                render_status_badge(review_status, large=True, lang=lang),
+            )
         highlights_html = (
             '<section class="record-highlights"><br>'
-            f'{render_highlight_block(text(lang, "highlight_status"), render_status_badge(review_status, large=True, lang=lang))}'
+            f'{render_highlight_block(text(lang, "highlight_participation_status"), render_status_badge(participation_status, kind="participation", large=True, lang=lang))}'
+            f"{publication_status_highlight_html}"
             f"{actions_html}"
             f'{render_highlight_block(text(lang, "highlight_validation"), render_validation_details_html(publication_validation, lang=lang), extra_class="record-highlight-validation")}'
             f'{render_highlight_block(text(lang, "highlight_comment"), comments_html, extra_class="record-highlight-comment")}'
@@ -998,8 +1073,14 @@ def render_admin_table(
             publication_file = record.get("publication_file") or {}
             expert_opinion_file = record.get("expert_opinion_file") or {}
             review_file = record.get("review_file") or {}
+            participation_status = str(record.get("participation_status") or PARTICIPATION_STATUSES[0])
             review_status = str(record.get("review_status") or REVIEW_STATUSES[0])
+            show_publication_status = publication_status_required(record)
             is_selected = bool(selected_registration_id and selected_registration_id == record_id)
+            participation_status_options = "".join(
+                f'<option value="{escape(status, quote=True)}"{" selected" if status == participation_status else ""}>{escape(participation_status_label(lang, status))}</option>'
+                for status in PARTICIPATION_STATUSES
+            )
             status_options = "".join(
                 f'<option value="{escape(status, quote=True)}"{" selected" if status == review_status else ""}>{escape(review_status_label(lang, status))}</option>'
                 for status in REVIEW_STATUSES
@@ -1022,8 +1103,18 @@ def render_admin_table(
                 f'<div class="file-stack"><div>{escape(str(record.get("email", "")))}</div>'
                 f'<div>{escape(str(record.get("phone", "")))}</div></div>'
             )
+            publication_status_cell = (
+                render_status_badge(review_status, lang=lang)
+                if show_publication_status
+                else escape(text(lang, "not_required_short"))
+            )
             record_fields_html = render_object_fields(record, lang=lang)
             comments_html = render_comments_thread_html(record, lang=lang)
+            publication_status_field_html = ""
+            if show_publication_status:
+                publication_status_field_html = (
+                    f'<label>{escape(text(lang, "highlight_publication_status"))}<select name="review_status">{status_options}</select></label>'
+                )
 
             rows_html.append(
                 f"""
@@ -1032,7 +1123,8 @@ def render_admin_table(
                   <td>{contacts_cell}</td>
                   <td>{escape(participation_label(lang, str(record.get("participation", ""))))}</td>
                   <td>{escape(str(record.get("publication_title", "")))}</td>
-                  <td>{render_status_badge(review_status, lang=lang)}</td>
+                  <td>{render_status_badge(participation_status, kind="participation", lang=lang)}</td>
+                  <td>{publication_status_cell}</td>
                   <td>{escape(format_dt(record.get("created_at"), lang=lang))}</td>
                 </tr>
                 """
@@ -1047,7 +1139,8 @@ def render_admin_table(
                   <div class="admin-tools">
                     {downloads_html}
                     <form method="post" action="/all_applications/comment/{record_id}">
-                      <label>{escape(text(lang, "highlight_status"))}<select name="review_status">{status_options}</select></label>
+                      <label>{escape(text(lang, "highlight_participation_status"))}<select name="participation_status">{participation_status_options}</select></label>
+                      {publication_status_field_html}
                       <label>{escape(text(lang, "comment_add_label"))}<textarea name="comment_text" placeholder="{escape(text(lang, "admin_comment_placeholder"), quote=True)}"></textarea></label>
                       <button type="submit">{escape(text(lang, "admin_save"))}</button>
                     </form>
@@ -1068,7 +1161,8 @@ def render_admin_table(
                       <th>{escape(text(lang, "admin_table_contacts"))}</th>
                       <th>{escape(text(lang, "admin_table_participation"))}</th>
                       <th>{escape(text(lang, "admin_table_publication"))}</th>
-                      <th>{escape(text(lang, "admin_table_status"))}</th>
+                      <th>{escape(text(lang, "admin_table_participation_status"))}</th>
+                      <th>{escape(text(lang, "admin_table_publication_status"))}</th>
                       <th>{escape(text(lang, "admin_table_created_at"))}</th>
                     </tr>
                   </thead>

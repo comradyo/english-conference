@@ -38,6 +38,15 @@ SECTION_OPTIONS = (
 )
 
 REVIEW_STATUSES = ("На рассмотрении", "Принята", "На доработке", "Отклонена")
+PARTICIPATION_STATUSES = (
+    "На рассмотрении",
+    "Отклонено",
+    "Подтверждено. Ждём вас на конференции",
+)
+PENDING_REVIEW_STATUS = REVIEW_STATUSES[0]
+REVISION_REVIEW_STATUS = REVIEW_STATUSES[2]
+CONFIRMED_PARTICIPATION_STATUS = PARTICIPATION_STATUSES[2]
+EDITABLE_REVIEW_STATUSES = (PENDING_REVIEW_STATUS, REVISION_REVIEW_STATUS)
 MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
 
 NonEmptyText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
@@ -66,6 +75,28 @@ ConferenceParticipation = Literal[
 
 def participation_requires_publication_file(participation: str) -> bool:
     return participation not in OPTIONAL_PUBLICATION_PARTICIPATION_OPTIONS
+
+
+def author_can_edit_registration(
+    *,
+    participation: str,
+    participation_status: str,
+    review_status: str,
+) -> bool:
+    if participation_requires_publication_file(participation):
+        return review_status in EDITABLE_REVIEW_STATUSES
+    return participation_status != CONFIRMED_PARTICIPATION_STATUS
+
+
+def author_can_delete_registration(
+    *,
+    participation: str,
+    participation_status: str,
+    review_status: str,
+) -> bool:
+    if participation_requires_publication_file(participation):
+        return review_status == PENDING_REVIEW_STATUS
+    return participation_status != CONFIRMED_PARTICIPATION_STATUS
 
 
 class AccountRegistrationPayload(BaseModel):
