@@ -1269,6 +1269,35 @@ def render_records_page(
     return layout(title, body, current_user=current_user, success=success, lang=lang)
 
 
+def render_admin_publication_recheck_page(
+    current_user: dict[str, Any],
+    *,
+    target_count: int,
+    success: str | None = None,
+    lang: str = DEFAULT_LANGUAGE,
+) -> HTMLResponse:
+    button_disabled_attr = " disabled" if target_count <= 0 else ""
+    body = f"""
+    <section class="panel">
+      <h2>{escape(text(lang, "admin_publication_recheck_heading"))}</h2>
+      <p>{escape(text(lang, "admin_publication_recheck_desc"))}</p>
+      <div class="meta">
+        {meta_row(text(lang, "admin_publication_recheck_count_label"), str(target_count))}
+      </div>
+      <form method="post" action="/admin/publication-validation-recheck" onsubmit="return confirm('{escape(text(lang, "admin_publication_recheck_confirm"), quote=True)}');">
+        <button type="submit"{button_disabled_attr}>{escape(text(lang, "admin_publication_recheck_button"))}</button>
+      </form>
+    </section>
+    """
+    return layout(
+        text(lang, "admin_publication_recheck_title"),
+        body,
+        current_user=current_user,
+        success=success,
+        lang=lang,
+    )
+
+
 def render_forbidden(current_user: dict[str, Any], *, lang: str = DEFAULT_LANGUAGE) -> HTMLResponse:
     response = layout(
         text(lang, "forbidden_title"),
