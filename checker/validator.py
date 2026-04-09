@@ -2,10 +2,16 @@ import re
 from typing import BinaryIO
 
 from docx import Document
-from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
 from docx.shared import Pt, Cm
 
+
 class Validator:
+    EMAIL_PATTERN = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+    KEYWORDS_PATTERN = re.compile(r"^\s*key\s*words?\s*[:.]?\s*(?P<keywords>.+)$", re.IGNORECASE)
+    CAPTION_PREFIXES = ("рис.", "рисунок", "fig.", "figure", "table", "табл.")
+    TITLE_SCAN_LIMIT = 15
+
     def __init__(self, source: str | BinaryIO):
         self.source = source
         self.doc = Document(source)
@@ -25,6 +31,158 @@ class Validator:
         self.check_references_count()
         self.check_reference_format()
         return self.errors, self.errors_eng
+
+    # Убирает лишние пробелы
+    @staticmethod
+    def _normalize_text(text: str) -> str:
+        return re.sub(r"\s+", " ", text).strip()
+
+    # Итерируется по цепочке стилей (видимо, стили идут не массивом, а связным списком) 
+    @staticmethod
+    def _iter_style_chain(style):
+        seen = set()
+        current_style = style
+        while current_style is not None and id(current_style) not in seen:
+            yield current_style
+            seen.add(id(current_style))
+            current_style = current_style.base_style
+
+    # Вычисляет, какое выравнивание используется в параграфе
+    @classmethod
+    def _effective_alignment(cls, paragraph):
+        if paragraph.alignment is not None:
+            return paragraph.alignment
+
+        for style in cls._iter_style_chain(paragraph.style):
+            alignment = style.paragraph_format.alignment
+            if alignment is not None:
+                return alignment
+
+        return None
+
+    @classmethod
+    def _effective_line_spacing(cls, paragraph):
+        spacing = paragraph.paragraph_format.line_spacing
+        rule = paragraph.paragraph_format.line_spacing_rule
+        if spacing is not None or rule is not None:
+            return spacing, rule
+
+        for style in cls._iter_style_chain(paragraph.style):
+            spacing = style.paragraph_format.line_spacing
+            rule = style.paragraph_format.line_spacing_rule
+            if spacing is not None or rule is not None:
+                return spacing, rule
+
+        return None, None
+
+    @staticmethod
+    def _line_spacing_multiplier(line_spacing) -> float | None:
+        if line_spacing is None:
+            return None
+        if hasattr(line_spacing, "pt"):
+            return None
+
+        try:
+            return float(line_spacing)
+        except (TypeError, ValueError):
+            return None
+
+    @classmethod
+    def _has_required_line_spacing(cls, paragraph) -> bool:
+        spacing, rule = cls._effective_line_spacing(paragraph)
+        multiplier = cls._line_spacing_multiplier(spacing)
+
+        if spacing is None and rule is None:
+            return True
+        if rule == WD_LINE_SPACING.ONE_POINT_FIVE:
+            return multiplier is None or abs(multiplier - 1.5) <= 0.01
+        if rule == WD_LINE_SPACING.MULTIPLE:
+            return multiplier is not None and abs(multiplier - 1.5) <= 0.01
+        if rule is None and multiplier is not None:
+            return abs(multiplier - 1.5) <= 0.01
+
+        return False
+
+    # Проверяет, что стиль (или предки, от которых он наследуется), является полужирным
+    @classmethod
+    def _style_font_bold(cls, style) -> bool | None:
+        for current_style in cls._iter_style_chain(style):
+            if current_style.font.bold is not None:
+                return current_style.font.bold
+        return None
+
+    # Проверяет, что стиль (или предки, от которых он наследуется), является курсивным
+    @classmethod
+    def _style_font_italic(cls, style) -> bool | None:
+        for current_style in cls._iter_style_chain(style):
+            if current_style.font.italic is not None:
+                return current_style.font.italic
+        return None
+
+    # Вычисляет эффективный курсив для run-а с учётом цепочки стилей
+    @classmethod
+    def _run_is_italic(cls, run, paragraph) -> bool:
+        if run.italic is not None:
+            return bool(run.italic)
+
+        if run.style is not None:
+            run_style_italic = cls._style_font_italic(run.style)
+            if run_style_italic is not None:
+                return run_style_italic
+
+        paragraph_style_italic = cls._style_font_italic(paragraph.style)
+        if paragraph_style_italic is not None:
+            return paragraph_style_italic
+
+        return False
+
+    # Проверяет, что в параграфе есть жирный текст
+    @classmethod
+    def _paragraph_has_bold_text(cls, paragraph) -> bool:
+        paragraph_style_bold = cls._style_font_bold(paragraph.style)
+
+        for run in paragraph.runs:
+            if not cls._normalize_text(run.text):
+                continue
+
+            if run.bold is not None:
+                if run.bold:
+                    return True
+                continue
+
+            if run.style is not None:
+                run_style_bold = cls._style_font_bold(run.style)
+                if run_style_bold is not None:
+                    if run_style_bold:
+                        return True
+                    continue
+
+            if paragraph_style_bold:
+                return True
+
+        return False
+
+    # Проверяет, что параграф является центрированным
+    @classmethod
+    def _is_centered(cls, paragraph) -> bool:
+        return cls._effective_alignment(paragraph) == WD_ALIGN_PARAGRAPH.CENTER
+
+    # Проверяет, что параграф является подписью к изображению/таблице
+    @classmethod
+    def _is_caption_paragraph(cls, paragraph) -> bool:
+        text = cls._normalize_text(paragraph.text).lower()
+        return text.startswith(cls.CAPTION_PREFIXES)
+
+    # Первые *limit* штук непустых параграфов
+    @classmethod
+    def _leading_non_empty_paragraphs(cls, paragraphs, limit: int):
+        found = []
+        for paragraph in paragraphs:
+            if cls._normalize_text(paragraph.text):
+                found.append(paragraph)
+            if len(found) >= limit:
+                break
+        return found
 
     # Поля
     def check_margins(self):
@@ -65,15 +223,20 @@ class Validator:
     # Межстрочный интервал
     def check_line_spacing(self):
         for p in self.doc.paragraphs:
-            if p.paragraph_format.line_spacing:
-                if p.paragraph_format.line_spacing != 1.5:
-                    self.errors.append("Межстрочный интервал должен равняться 1.5 единицам")
-                    self.errors_eng.append("The line spacing must be 1.5 units")
-                    return
+            if not self._normalize_text(p.text):
+                continue
+            if not self._has_required_line_spacing(p):
+                self.errors.append("Межстрочный интервал должен равняться 1.5 единицам")
+                self.errors_eng.append("The line spacing must be 1.5 units")
+                return
 
     # Абзацный отступ
     def check_first_line_indent(self):
         for p in self.doc.paragraphs:
+            if not self._normalize_text(p.text):
+                continue
+            if self._is_centered(p) or self._is_caption_paragraph(p):
+                continue
             indent = p.paragraph_format.first_line_indent
             if indent and round(indent.cm, 2) != 1.25:
                 self.errors.append("Абзацный отступ должен равняться 1.25 единицам")
@@ -82,15 +245,14 @@ class Validator:
 
     # Email (курсив)
     def check_email(self):
-        email_pattern = r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"
         found = False
 
         for p in self.doc.paragraphs:
-            if re.search(email_pattern, p.text):
+            if self.EMAIL_PATTERN.search(p.text):
                 found = True
                 for run in p.runs:
-                    if re.search(email_pattern, run.text):
-                        if not run.italic:
+                    if self.EMAIL_PATTERN.search(run.text):
+                        if not self._run_is_italic(run, p):
                             self.errors.append("Email должен быть напечатан курсивом")
                             self.errors_eng.append("The email must be printed in italics")
                 break
@@ -101,28 +263,38 @@ class Validator:
 
     # Название статьи (по центру, жирное)
     def check_title(self):
-        for p in self.doc.paragraphs[:10]:
-            if p.alignment == WD_ALIGN_PARAGRAPH.CENTER:
-                bold_found = any(run.bold for run in p.runs)
-                if not bold_found:
-                    self.errors.append("Для названия статьи необходимо использовать полужирное начертание")
-                    self.errors_eng.append("The title of the article must be printed in bold")
-                return
+        for p in self._leading_non_empty_paragraphs(self.doc.paragraphs, self.TITLE_SCAN_LIMIT):
+            text = self._normalize_text(p.text)
+            if not self._is_centered(p):
+                continue
+            if self.EMAIL_PATTERN.search(text):
+                continue
+            if text.lower().startswith(("abstract", "keywords", "key words")):
+                continue
+
+            bold_found = self._paragraph_has_bold_text(p)
+            if not bold_found:
+                self.errors.append("Для названия статьи необходимо использовать полужирное начертание")
+                self.errors_eng.append("The title of the article must be printed in bold")
+            return
         self.errors.append("Название статьи не найдено")
         self.errors_eng.append("The title of the article was not found")
 
     # Ключевые слова
     def check_keywords(self):
         for p in self.doc.paragraphs:
-            if "key words" in p.text.lower():
-                parts = p.text.split(":")
-                if len(parts) > 1:
-                    keywords = [k.strip() for k in parts[1].split(";")]
-                    if not (5 <= len(keywords) <= 10):
-                        keywords = [k.strip() for k in parts[1].split(",")]
-                        if not (5 <= len(keywords) <= 10):
-                            self.errors.append("Ключевых слов должно быть от 5 до 10")
-                            self.errors_eng.append("There should be from 5 to 10 keywords")
+            match = self.KEYWORDS_PATTERN.match(p.text)
+            if match:
+                keywords_text = match.group("keywords").strip()
+                if ";" in keywords_text:
+                    self.errors.append("Разделителем ключевых слов должна быть запятая")
+                    self.errors_eng.append("Keywords must be separated by commas")
+                    return
+
+                keywords = [keyword.strip() for keyword in keywords_text.split(",") if keyword.strip()]
+                if not (5 <= len(keywords) <= 10):
+                    self.errors.append("Ключевых слов должно быть от 5 до 10")
+                    self.errors_eng.append("There should be from 5 to 10 keywords")
                 return
         self.errors.append("Ключевые слова не найдены")
         self.errors_eng.append("Keywords of the article were not found")

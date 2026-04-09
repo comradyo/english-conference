@@ -216,6 +216,38 @@ TEXTS: dict[str, dict[str, str]] = {
     "owner_account_email": {"ru": "Владелец аккаунта", "en": "Account owner"},
     "records_my_title": {"ru": "Мои заявки", "en": "My applications"},
     "records_admin_title": {"ru": "Все заявки пользователей", "en": "All user applications"},
+    "admin_publication_recheck_title": {
+        "ru": "Перепроверка файлов публикаций",
+        "en": "Publication file revalidation",
+    },
+    "admin_publication_recheck_heading": {
+        "ru": "Повторная автопроверка загруженных публикаций",
+        "en": "Repeat automatic validation for uploaded publications",
+    },
+    "admin_publication_recheck_desc": {
+        "ru": "Кнопка ниже заново поставит все заявки с загруженными файлами публикаций в очередь автопроверки. После обработки результаты появятся в поле замечаний автопроверки заявки.",
+        "en": "The button below re-queues every application with an uploaded publication file for automatic validation. After processing, the results will appear in the application's validation remarks field.",
+    },
+    "admin_publication_recheck_count_label": {
+        "ru": "Заявок с файлами публикаций",
+        "en": "Applications with publication files",
+    },
+    "admin_publication_recheck_button": {
+        "ru": "Запустить перепроверку",
+        "en": "Start revalidation",
+    },
+    "admin_publication_recheck_confirm": {
+        "ru": "Поставить все заявки с файлами публикаций на повторную автопроверку?",
+        "en": "Re-queue all applications with publication files for automatic validation?",
+    },
+    "admin_publication_recheck_success": {
+        "ru": "На повторную автопроверку отправлено {count} заявок.",
+        "en": "{count} applications were queued for repeated automatic validation.",
+    },
+    "admin_publication_recheck_success_empty": {
+        "ru": "Заявки с файлами публикаций для перепроверки не найдены.",
+        "en": "No applications with publication files were found for revalidation.",
+    },
     "records_empty_my": {
         "ru": "Вы ещё не оставляли заявок на конференцию.",
         "en": "You have not submitted any conference applications yet.",

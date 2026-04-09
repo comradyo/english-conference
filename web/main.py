@@ -30,6 +30,7 @@ from models import (
 )
 from render import (
     layout,
+    render_admin_publication_recheck_page,
     render_auth_page,
     render_conference_form,
     render_forbidden,
@@ -1311,6 +1312,64 @@ async def admin_registrations(request: Request):
             selected_registration_id=request.query_params.get("selected"),
             lang=lang,
         ),
+    )
+
+
+@app.get("/admin/publication-validation-recheck", include_in_schema=False)
+async def admin_publication_validation_recheck_page(request: Request):
+    lang = request_language(request)
+    current_user, response = await require_admin(request, lambda user: render_forbidden(user, lang=lang))
+    if response:
+        return with_language(request, response)
+
+    target_filter = {"publication_file.data": {"$exists": True}}
+    target_count = await request.app.state.registrations_collection.count_documents(target_filter)
+    queued_value = request.query_params.get("queued")
+    success = None
+    if queued_value is not None:
+        try:
+            queued_count = max(0, int(queued_value))
+        except ValueError:
+            queued_count = None
+        if queued_count is not None:
+            success = (
+                text(lang, "admin_publication_recheck_success_empty")
+                if queued_count == 0
+                else text(lang, "admin_publication_recheck_success", count=queued_count)
+            )
+
+    return with_language(
+        request,
+        render_admin_publication_recheck_page(
+            current_user,
+            target_count=target_count,
+            success=success,
+            lang=lang,
+        ),
+    )
+
+
+@app.post("/admin/publication-validation-recheck", include_in_schema=False)
+async def admin_publication_validation_recheck(request: Request):
+    lang = request_language(request)
+    current_user, response = await require_admin(request, lambda user: render_forbidden(user, lang=lang))
+    if response:
+        return with_language(request, response)
+
+    target_filter = {"publication_file.data": {"$exists": True}}
+    pending_validation = build_initial_publication_validation(has_publication_file=True)
+    update_result = await request.app.state.registrations_collection.update_many(
+        target_filter,
+        {
+            "$set": {
+                "publication_validation": pending_validation,
+            }
+        },
+    )
+    return localized_redirect(
+        request,
+        f"/admin/publication-validation-recheck?queued={update_result.matched_count}",
+        status_code=303,
     )
 
 
