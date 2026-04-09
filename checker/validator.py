@@ -111,6 +111,31 @@ class Validator:
                 return current_style.font.bold
         return None
 
+    # Проверяет, что стиль (или предки, от которых он наследуется), является курсивным
+    @classmethod
+    def _style_font_italic(cls, style) -> bool | None:
+        for current_style in cls._iter_style_chain(style):
+            if current_style.font.italic is not None:
+                return current_style.font.italic
+        return None
+
+    # Вычисляет эффективный курсив для run-а с учётом цепочки стилей
+    @classmethod
+    def _run_is_italic(cls, run, paragraph) -> bool:
+        if run.italic is not None:
+            return bool(run.italic)
+
+        if run.style is not None:
+            run_style_italic = cls._style_font_italic(run.style)
+            if run_style_italic is not None:
+                return run_style_italic
+
+        paragraph_style_italic = cls._style_font_italic(paragraph.style)
+        if paragraph_style_italic is not None:
+            return paragraph_style_italic
+
+        return False
+
     # Проверяет, что в параграфе есть жирный текст
     @classmethod
     def _paragraph_has_bold_text(cls, paragraph) -> bool:
@@ -227,7 +252,7 @@ class Validator:
                 found = True
                 for run in p.runs:
                     if self.EMAIL_PATTERN.search(run.text):
-                        if not run.italic:
+                        if not self._run_is_italic(run, p):
                             self.errors.append("Email должен быть напечатан курсивом")
                             self.errors_eng.append("The email must be printed in italics")
                 break
