@@ -2,7 +2,7 @@ import re
 from typing import BinaryIO
 
 from docx import Document
-from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
 from docx.shared import Pt, Cm
 
 
@@ -59,6 +59,49 @@ class Validator:
                 return alignment
 
         return None
+
+    @classmethod
+    def _effective_line_spacing(cls, paragraph):
+        spacing = paragraph.paragraph_format.line_spacing
+        rule = paragraph.paragraph_format.line_spacing_rule
+        if spacing is not None or rule is not None:
+            return spacing, rule
+
+        for style in cls._iter_style_chain(paragraph.style):
+            spacing = style.paragraph_format.line_spacing
+            rule = style.paragraph_format.line_spacing_rule
+            if spacing is not None or rule is not None:
+                return spacing, rule
+
+        return None, None
+
+    @staticmethod
+    def _line_spacing_multiplier(line_spacing) -> float | None:
+        if line_spacing is None:
+            return None
+        if hasattr(line_spacing, "pt"):
+            return None
+
+        try:
+            return float(line_spacing)
+        except (TypeError, ValueError):
+            return None
+
+    @classmethod
+    def _has_required_line_spacing(cls, paragraph) -> bool:
+        spacing, rule = cls._effective_line_spacing(paragraph)
+        multiplier = cls._line_spacing_multiplier(spacing)
+
+        if spacing is None and rule is None:
+            return True
+        if rule == WD_LINE_SPACING.ONE_POINT_FIVE:
+            return multiplier is None or abs(multiplier - 1.5) <= 0.01
+        if rule == WD_LINE_SPACING.MULTIPLE:
+            return multiplier is not None and abs(multiplier - 1.5) <= 0.01
+        if rule is None and multiplier is not None:
+            return abs(multiplier - 1.5) <= 0.01
+
+        return False
 
     # Проверяет, что стиль (или предки, от которых он наследуется), является полужирным
     @classmethod
@@ -155,11 +198,12 @@ class Validator:
     # Межстрочный интервал
     def check_line_spacing(self):
         for p in self.doc.paragraphs:
-            if p.paragraph_format.line_spacing:
-                if p.paragraph_format.line_spacing != 1.5:
-                    self.errors.append("Межстрочный интервал должен равняться 1.5 единицам")
-                    self.errors_eng.append("The line spacing must be 1.5 units")
-                    return
+            if not self._normalize_text(p.text):
+                continue
+            if not self._has_required_line_spacing(p):
+                self.errors.append("Межстрочный интервал должен равняться 1.5 единицам")
+                self.errors_eng.append("The line spacing must be 1.5 units")
+                return
 
     # Абзацный отступ
     def check_first_line_indent(self):
