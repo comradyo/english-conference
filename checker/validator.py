@@ -321,8 +321,7 @@ class Validator:
         return list(reversed(title_block))
 
     def _keyword_items(self, raw_text: str) -> list[str]:
-        separator = ";" if ";" in raw_text else ","
-        parts = [item.strip(" .;,\t") for item in raw_text.split(separator)]
+        parts = [item.strip(" .;,\t") for item in raw_text.split(",")]
         return [item for item in parts if item]
 
     def _document_structure(self) -> dict[str, object]:
@@ -658,6 +657,12 @@ class Validator:
         info = self.paragraph_infos[position]
         match = pattern.match(info.text)
         keywords_text = match.group("text") if match else ""
+        if ";" in keywords_text:
+            self._add_error(
+                f"Разделителем ключевых слов на {lang_ru} языке должна быть запятая",
+                f"Keywords in {lang_en} must be separated by commas",
+            )
+            return
         keywords = self._keyword_items(keywords_text)
         if not (5 <= len(keywords) <= 10):
             self._add_error(
