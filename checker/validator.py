@@ -639,6 +639,14 @@ class Validator:
         return bool(cls._normalize_text(text))
 
     @classmethod
+    def _run_has_text_requiring_text_format(cls, run) -> bool:
+        return cls._has_visible_text(run.text) and not cls._run_contains_formula(run)
+
+    @classmethod
+    def _paragraph_has_text_requiring_text_format(cls, paragraph) -> bool:
+        return any(cls._run_has_text_requiring_text_format(run) for run in paragraph.runs)
+
+    @classmethod
     def _cm_matches(cls, actual_cm: float, expected_cm: float) -> bool:
         return abs(actual_cm - expected_cm) <= cls.CM_TOLERANCE
 
@@ -979,8 +987,10 @@ class Validator:
     # Шрифт и размер
     def check_font_and_size(self):
         for paragraph in self._iter_all_paragraphs():
+            if not self._paragraph_has_text_requiring_text_format(paragraph):
+                continue
             for run in paragraph.runs:
-                if not self._has_visible_text(run.text) or self._run_contains_formula(run):
+                if not self._run_has_text_requiring_text_format(run):
                     continue
 
                 font_name = self._effective_run_font_name(run, paragraph)
@@ -1002,7 +1012,7 @@ class Validator:
     # Межстрочный интервал
     def check_line_spacing(self):
         for paragraph in self._iter_all_paragraphs():
-            if not self._has_visible_text(paragraph.text):
+            if not self._paragraph_has_text_requiring_text_format(paragraph):
                 continue
             if not self._has_required_line_spacing(paragraph):
                 self._add_error(

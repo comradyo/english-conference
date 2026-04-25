@@ -276,6 +276,47 @@ class ValidatorGlobalRequirementsTest(unittest.TestCase):
         )
         self.assertNotIn("Размер шрифта должен быть 12", errors_ru)
 
+    def test_text_format_checks_ignore_object_only_and_trailing_empty_paragraphs(self):
+        doc = Document()
+        _configure_valid_section(doc.sections[0])
+        _add_body_paragraph(doc, "Текст статьи " * 620)
+
+        _add_small_picture(doc)
+        picture_paragraph = doc.paragraphs[-1]
+        picture_paragraph.paragraph_format.line_spacing = 1
+
+        formula_paragraph = doc.add_paragraph()
+        formula_paragraph.paragraph_format.line_spacing = 1
+        formula_run = formula_paragraph.add_run("x")
+        formula_run.font.name = "Cambria Math"
+        formula_run.font.size = Pt(10)
+        formula_run._element.append(
+            parse_xml(
+                '<m:oMath xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math">'
+                "<m:r><m:t>x</m:t></m:r>"
+                "</m:oMath>"
+            )
+        )
+
+        table = doc.add_table(rows=1, cols=1)
+        table_cell_paragraph = table.rows[0].cells[0].paragraphs[0]
+        table_cell_paragraph.paragraph_format.line_spacing = 1
+
+        trailing_empty = doc.add_paragraph()
+        trailing_empty.paragraph_format.line_spacing = 1
+        empty_run = trailing_empty.add_run("")
+        empty_run.font.name = "Arial"
+        empty_run.font.size = Pt(18)
+
+        errors_ru, _ = _validate_global(_docx_bytes(doc, pages=4))
+
+        self.assertNotIn(
+            "В тексте статьи необходимо использовать шрифт Times New Roman, за исключением математических формул",
+            errors_ru,
+        )
+        self.assertNotIn("Размер шрифта должен быть 12", errors_ru)
+        self.assertNotIn("Межстрочный интервал должен равняться 1.5", errors_ru)
+
     def test_hyperlink_check_allows_email_links(self):
         doc = Document()
         _configure_valid_section(doc.sections[0])
