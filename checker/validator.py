@@ -52,6 +52,8 @@ class Validator:
     MIN_PAGE_COUNT = 4
     MAX_PAGE_COUNT = 6
     MIN_CHARACTERS_WITH_SPACES = 6000
+    MAX_TABLES = 2
+    MAX_FIGURES = 5
     CM_TOLERANCE = 0.08
     PT_TOLERANCE = 0.1
 
@@ -64,10 +66,16 @@ class Validator:
     KEYWORDS_PATTERN = EN_KEYWORDS_PATTERN
     SOURCES_HEADING_PATTERN = re.compile(r"^\s*(Список\s+источников|References)\s*$", re.IGNORECASE)
     SPIN_PATTERN = re.compile(r"^\s*SPIN(?:-код|-code)?\s*:\s*(?P<code>\d{4}-\d{4})\s*$", re.IGNORECASE)
+    TABLE_CAPTION_PATTERN = re.compile(r"^\s*(?:Таблица|Table)\s+(?P<number>\d+)\b", re.IGNORECASE)
+    FIGURE_CAPTION_PATTERN = re.compile(
+        r"^\s*(?:Рис\.?|Рисунок|Fig\.?|Figure)\s+(?P<number>\d+)\b",
+        re.IGNORECASE,
+    )
     WORD_PATTERN = re.compile(r"[A-Za-zА-Яа-яЁё]+(?:[-'][A-Za-zА-Яа-яЁё]+)?")
     RU_NAME_WORD_PATTERN = re.compile(r"[А-ЯЁ][А-Яа-яЁё-]+")
     EN_NAME_WORD_PATTERN = re.compile(r"[A-Z][A-Za-z'-]+")
     ABBREVIATION_PATTERN = re.compile(r"\b[A-ZА-ЯЁ]{2,}\b")
+    PLAIN_TEXT_FORMULA_PATTERN = re.compile(r"[A-Za-zА-Яа-яЁё0-9)\]]\s*(?:=|≈|≠|≤|≥|<|>|±|∑|√|×|÷)\s*[\w([{]")
     CAPTION_PREFIXES = ("рис.", "рисунок", "fig.", "figure", "table", "табл.")
     TITLE_SCAN_LIMIT = 15
     EMAIL_LINK_LABELS = {"email", "e-mail", "e mail"}
@@ -87,6 +95,7 @@ class Validator:
         self.validate_article_structure()
         self.validate_metadata_and_authors()
         self.validate_annotations_and_keywords()
+        self.validate_tables_figures_and_formulas()
         return self.errors, self.errors_eng
 
     def validate_global_requirements(self):
@@ -166,6 +175,11 @@ class Validator:
     def validate_annotations_and_keywords(self):
         self.check_annotations()
         self.check_keywords_metadata()
+
+    def validate_tables_figures_and_formulas(self):
+        self.check_tables()
+        self.check_figures()
+        self.check_formulas()
 
     @staticmethod
     def _read_source_bytes(source: str | Path | BinaryIO) -> bytes:
@@ -413,6 +427,80 @@ class Validator:
         except Exception:
             return False
 
+    def _formula_count(self) -> int:
+        try:
+            return len(self.doc.element.xpath(".//*[local-name()='oMath' or local-name()='oMathPara']"))
+        except Exception:
+            return 0
+
+    def _drawing_count(self) -> int:
+        try:
+            drawings = self.doc.element.xpath(".//*[local-name()='drawing']")
+            picts = self.doc.element.xpath(".//*[local-name()='pict']")
+        except Exception:
+            return 0
+        return len(drawings) + len(picts)
+
+    def _caption_numbers(self, pattern) -> list[int]:
+        numbers = []
+        for item in getattr(self, "structure", self._build_article_structure()).items:
+            match = pattern.match(item.text)
+            if match:
+                numbers.append(int(match.group("number")))
+        return numbers
+
+    @staticmethod
+    def _has_sequential_numbers(numbers: list[int]) -> bool:
+        return numbers == list(range(1, len(numbers) + 1))
+
+    def _available_text_width_cm(self) -> float | None:
+        widths = []
+        for section in self.doc.sections:
+            width = section.page_width.cm - section.left_margin.cm - section.right_margin.cm
+            if width > 0:
+                widths.append(width)
+        if not widths:
+            return None
+        return min(widths)
+
+    @staticmethod
+    def _table_width_cm(table) -> float | None:
+        try:
+            grid_columns = table._tbl.xpath("./*[local-name()='tblGrid']/*[local-name()='gridCol']")
+        except Exception:
+            return None
+
+        widths_twips = []
+        for column in grid_columns:
+            width = None
+            for attr_name, attr_value in column.attrib.items():
+                if attr_name.endswith("}w") or attr_name == "w":
+                    width = attr_value
+                    break
+            if width is None:
+                return None
+            try:
+                widths_twips.append(int(width))
+            except ValueError:
+                return None
+
+        if not widths_twips:
+            return None
+        return sum(widths_twips) / 1440 * 2.54
+
+    @classmethod
+    def _looks_like_plain_text_formula(cls, text: str) -> bool:
+        normalized = cls._normalize_text(text)
+        if not normalized or len(normalized) > 120:
+            return False
+        if cls.EMAIL_PATTERN.search(normalized) or re.search(r"https?://|doi\.org|www\.", normalized, re.IGNORECASE):
+            return False
+        if not cls.PLAIN_TEXT_FORMULA_PATTERN.search(normalized):
+            return False
+
+        word_count = len(re.findall(r"[A-Za-zА-Яа-яЁё]{2,}", normalized))
+        return word_count <= 6
+
     @classmethod
     def _superscript_text(cls, paragraph) -> str:
         parts = []
@@ -480,6 +568,19 @@ class Validator:
                 yield from cell.paragraphs
                 for nested_table in cell.tables:
                     yield from cls._iter_table_paragraphs(nested_table)
+
+    def _iter_all_tables(self) -> Iterable:
+        for table in self.doc.tables:
+            yield table
+            yield from self._iter_nested_tables(table)
+
+    @classmethod
+    def _iter_nested_tables(cls, table) -> Iterable:
+        for row in table.rows:
+            for cell in row.cells:
+                for nested_table in cell.tables:
+                    yield nested_table
+                    yield from cls._iter_nested_tables(nested_table)
 
     def _character_count_with_spaces(self) -> int:
         texts = [
@@ -1100,6 +1201,77 @@ class Validator:
             if self._word_count(keyword) > 4:
                 self._add_error(phrase_message_ru, phrase_message_en)
                 break
+
+    # Таблицы
+    def check_tables(self):
+        tables = list(self._iter_all_tables())
+        table_count = len(tables)
+        table_caption_numbers = self._caption_numbers(self.TABLE_CAPTION_PATTERN)
+
+        if table_count > self.MAX_TABLES:
+            self._add_error(
+                "В статье должно быть не более 2 таблиц",
+                "The article must contain no more than 2 tables",
+            )
+
+        if table_count and len(table_caption_numbers) < table_count:
+            self._add_error(
+                "Все таблицы должны иметь подписи с номером",
+                "All tables must have numbered captions",
+            )
+
+        if table_caption_numbers and not self._has_sequential_numbers(table_caption_numbers):
+            self._add_error(
+                "Таблицы должны нумероваться последовательно в порядке упоминания",
+                "Tables must be numbered sequentially in order of mention",
+            )
+
+        available_width_cm = self._available_text_width_cm()
+        if available_width_cm is None:
+            return
+        for table in tables:
+            table_width_cm = self._table_width_cm(table)
+            if table_width_cm is not None and table_width_cm > available_width_cm + self.CM_TOLERANCE:
+                self._add_error(
+                    "Таблицы должны располагаться в пределах рабочего поля",
+                    "Tables must fit within the working area",
+                )
+                return
+
+    # Рисунки
+    def check_figures(self):
+        figure_count = self._drawing_count()
+        figure_caption_numbers = self._caption_numbers(self.FIGURE_CAPTION_PATTERN)
+
+        if figure_count > self.MAX_FIGURES:
+            self._add_error(
+                "В статье должно быть не более 5 рисунков",
+                "The article must contain no more than 5 figures",
+            )
+
+        if figure_count and len(figure_caption_numbers) < figure_count:
+            self._add_error(
+                "Все рисунки должны иметь подрисуночные подписи",
+                "All figures must have captions",
+            )
+
+        if figure_caption_numbers and not self._has_sequential_numbers(figure_caption_numbers):
+            self._add_error(
+                "Рисунки должны нумероваться последовательно в порядке упоминания",
+                "Figures must be numbered sequentially in order of mention",
+            )
+
+    # Формулы
+    def check_formulas(self):
+        for paragraph in self._iter_all_paragraphs():
+            if self._paragraph_contains_formula(paragraph):
+                continue
+            if self._looks_like_plain_text_formula(paragraph.text):
+                self._add_error(
+                    "Формулы должны быть набраны в редакторе формул Word, Equation или MathType",
+                    "Formulas must be created with Word Equation, Equation, or MathType",
+                )
+                return
 
     # Абзацный отступ
     def check_first_line_indent(self):

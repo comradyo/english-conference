@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import io
 import unittest
 import zipfile
@@ -13,6 +14,12 @@ from docx.oxml.ns import qn
 from docx.shared import Cm, Pt
 
 from checker.validator import Validator
+
+
+PNG_1X1 = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgG"
+    "M9t6RpwAAAABJRU5ErkJggg=="
+)
 
 
 def _local_name(tag: str) -> str:
@@ -94,6 +101,20 @@ def _add_article_paragraph(doc: Document, text: str, *, bold: bool = False):
     run.font.size = Pt(12)
     run.bold = bold
     return paragraph
+
+
+def _add_small_picture(doc: Document) -> None:
+    doc.add_picture(io.BytesIO(PNG_1X1), width=Cm(1))
+
+
+def _add_table(doc: Document) -> None:
+    table = doc.add_table(rows=1, cols=2)
+    for index, cell in enumerate(table.rows[0].cells, 1):
+        paragraph = cell.paragraphs[0]
+        paragraph.paragraph_format.line_spacing = 1.5
+        run = paragraph.add_run(str(index))
+        run.font.name = "Times New Roman"
+        run.font.size = Pt(12)
 
 
 def _add_author_paragraph(doc: Document, name: str, marker: str, email: str):
@@ -288,6 +309,59 @@ class ValidatorGlobalRequirementsTest(unittest.TestCase):
         self.assertIn("Ключевые слова должны разделяться запятыми", errors_ru)
         self.assertIn("Ключевые слова не должны содержать аббревиатуры", errors_ru)
         self.assertIn("Ключевых слов на английском языке должно быть от 5 до 7", errors_ru)
+
+    def test_tables_figures_and_formula_objects_pass(self):
+        doc = _valid_article_document()
+        _add_article_paragraph(doc, "Таблица 1")
+        _add_table(doc)
+        _add_small_picture(doc)
+        _add_article_paragraph(doc, "Рисунок 1 Example figure")
+
+        paragraph = _add_article_paragraph(doc, "Formula: ")
+        formula_run = paragraph.add_run("x")
+        formula_run.font.name = "Cambria Math"
+        formula_run.font.size = Pt(12)
+        formula_run._element.append(
+            parse_xml(
+                '<m:oMath xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math">'
+                "<m:r><m:t>x</m:t></m:r>"
+                "</m:oMath>"
+            )
+        )
+
+        errors_ru, errors_en = Validator(_docx_bytes(doc, pages=4)).validate()
+
+        self.assertEqual([], errors_ru)
+        self.assertEqual([], errors_en)
+
+    def test_table_violations_are_reported(self):
+        doc = _valid_article_document()
+        for number in (1, 2, 3):
+            _add_article_paragraph(doc, f"Таблица {number}")
+            _add_table(doc)
+
+        errors_ru, _ = Validator(_docx_bytes(doc, pages=4)).validate()
+
+        self.assertIn("В статье должно быть не более 2 таблиц", errors_ru)
+
+    def test_figure_violations_are_reported(self):
+        doc = _valid_article_document()
+        _add_small_picture(doc)
+
+        errors_ru, _ = Validator(_docx_bytes(doc, pages=4)).validate()
+
+        self.assertIn("Все рисунки должны иметь подрисуночные подписи", errors_ru)
+
+    def test_caption_sequence_and_plain_text_formula_violations_are_reported(self):
+        doc = _valid_article_document()
+        _add_article_paragraph(doc, "Таблица 2")
+        _add_table(doc)
+        _add_article_paragraph(doc, "E = mc2")
+
+        errors_ru, _ = Validator(_docx_bytes(doc, pages=4)).validate()
+
+        self.assertIn("Таблицы должны нумероваться последовательно в порядке упоминания", errors_ru)
+        self.assertIn("Формулы должны быть набраны в редакторе формул Word, Equation или MathType", errors_ru)
 
 
 if __name__ == "__main__":
