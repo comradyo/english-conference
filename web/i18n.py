@@ -68,6 +68,10 @@ TEXTS: dict[str, dict[str, str]] = {
         "ru": "Удаление недоступно для заявки в её текущем статусе.",
         "en": "Deletion is not available for the application in its current status.",
     },
+    "notice_application_deletion_disabled": {
+        "ru": "Удаление заявок отключено.",
+        "en": "Application deletion is disabled.",
+    },
     "notice_password_reset_email_queued": {
         "ru": "Если аккаунт с таким email существует, мы отправили ссылку для смены пароля.",
         "en": "If an account with this email exists, we have sent a password reset link.",
@@ -220,6 +224,34 @@ TEXTS: dict[str, dict[str, str]] = {
         "ru": "Перепроверка файлов публикаций",
         "en": "Publication file revalidation",
     },
+    "admin_maintenance_title": {
+        "ru": "Обслуживание",
+        "en": "Maintenance",
+    },
+    "admin_maintenance_controls_heading": {
+        "ru": "Управление заявками",
+        "en": "Application controls",
+    },
+    "admin_maintenance_controls_desc": {
+        "ru": "Переключатели ниже разрешают или запрещают создание и удаление заявок.",
+        "en": "Use the toggles below to allow or block application creation and deletion.",
+    },
+    "admin_maintenance_creation_toggle": {
+        "ru": "Разрешить создание заявок",
+        "en": "Allow application creation",
+    },
+    "admin_maintenance_deletion_toggle": {
+        "ru": "Разрешить удаление заявок",
+        "en": "Allow application deletion",
+    },
+    "admin_maintenance_save_button": {
+        "ru": "Сохранить настройки",
+        "en": "Save settings",
+    },
+    "admin_maintenance_settings_success": {
+        "ru": "Настройки обслуживания сохранены.",
+        "en": "Maintenance settings have been saved.",
+    },
     "admin_publication_recheck_heading": {
         "ru": "Повторная автопроверка загруженных публикаций",
         "en": "Repeat automatic validation for uploaded publications",
@@ -254,6 +286,10 @@ TEXTS: dict[str, dict[str, str]] = {
     },
     "records_empty_admin": {"ru": "В системе пока нет заявок.", "en": "There are no applications in the system yet."},
     "records_empty_action": {"ru": "Перейти к форме регистрации", "en": "Go to the registration form"},
+    "application_creation_disabled_body": {
+        "ru": "Регистрация закрыта.",
+        "en": "Registration is closed.",
+    },
     "edit_rejected_application": {"ru": "Редактировать заявку", "en": "Edit application"},
     "delete_pending_application": {"ru": "Удалить заявку", "en": "Delete application"},
     "delete_application_confirm": {

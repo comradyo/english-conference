@@ -902,7 +902,13 @@ def render_conference_form(
     return layout(text(lang, page_title_key), body, current_user=current_user, error=error, lang=lang)
 
 
-def render_record_card(record: dict[str, Any], *, admin_mode: bool, lang: str = DEFAULT_LANGUAGE) -> str:
+def render_record_card(
+    record: dict[str, Any],
+    *,
+    admin_mode: bool,
+    application_deletion_enabled: bool = True,
+    lang: str = DEFAULT_LANGUAGE,
+) -> str:
     publication_file = record.get("publication_file") or {}
     expert_opinion_file = record.get("expert_opinion_file") or {}
     review_file = record.get("review_file") or {}
@@ -915,7 +921,7 @@ def render_record_card(record: dict[str, Any], *, admin_mode: bool, lang: str = 
         participation_status=participation_status,
         review_status=review_status,
     )
-    can_delete = author_can_delete_registration(
+    can_delete = application_deletion_enabled and author_can_delete_registration(
         participation=str(record.get("participation") or ""),
         participation_status=participation_status,
         review_status=review_status,
@@ -1257,40 +1263,55 @@ def render_records_page(
     empty_text: str,
     empty_action_html: str = "",
     selected_registration_id: str | None = None,
+    application_deletion_enabled: bool = True,
     lang: str = DEFAULT_LANGUAGE,
 ) -> HTMLResponse:
     if records:
         if admin_mode:
             body = render_admin_table(records, selected_registration_id=selected_registration_id, lang=lang)
         else:
-            body = f'<section class="cards">{"".join(render_record_card(record, admin_mode=admin_mode, lang=lang) for record in records)}</section>'
+            body = f'<section class="cards">{"".join(render_record_card(record, admin_mode=admin_mode, application_deletion_enabled=application_deletion_enabled, lang=lang) for record in records)}</section>'
     else:
         body = f'<div class="empty">{escape(empty_text)}{empty_action_html}</div>'
     return layout(title, body, current_user=current_user, success=success, lang=lang)
 
 
-def render_admin_publication_recheck_page(
+def render_admin_maintenance_page(
     current_user: dict[str, Any],
     *,
     target_count: int,
+    maintenance_settings: dict[str, bool],
     success: str | None = None,
     lang: str = DEFAULT_LANGUAGE,
 ) -> HTMLResponse:
     button_disabled_attr = " disabled" if target_count <= 0 else ""
+    creation_checked_attr = " checked" if maintenance_settings.get("application_creation_enabled", True) else ""
+    deletion_checked_attr = " checked" if maintenance_settings.get("application_deletion_enabled", True) else ""
     body = f"""
+    <section class="split">
+    <section class="panel">
+      <h2>{escape(text(lang, "admin_maintenance_controls_heading"))}</h2>
+      <p>{escape(text(lang, "admin_maintenance_controls_desc"))}</p>
+      <form method="post" action="/admin/maintenance">
+        <label class="consent-row"><input type="checkbox" name="application_creation_enabled"{creation_checked_attr}><span>{escape(text(lang, "admin_maintenance_creation_toggle"))}</span></label>
+        <label class="consent-row"><input type="checkbox" name="application_deletion_enabled"{deletion_checked_attr}><span>{escape(text(lang, "admin_maintenance_deletion_toggle"))}</span></label>
+        <button type="submit">{escape(text(lang, "admin_maintenance_save_button"))}</button>
+      </form>
+    </section>
     <section class="panel">
       <h2>{escape(text(lang, "admin_publication_recheck_heading"))}</h2>
       <p>{escape(text(lang, "admin_publication_recheck_desc"))}</p>
       <div class="meta">
         {meta_row(text(lang, "admin_publication_recheck_count_label"), str(target_count))}
       </div>
-      <form method="post" action="/admin/publication-validation-recheck" onsubmit="return confirm('{escape(text(lang, "admin_publication_recheck_confirm"), quote=True)}');">
+      <form method="post" action="/admin/maintenance/publication-validation-recheck" onsubmit="return confirm('{escape(text(lang, "admin_publication_recheck_confirm"), quote=True)}');">
         <button type="submit"{button_disabled_attr}>{escape(text(lang, "admin_publication_recheck_button"))}</button>
       </form>
     </section>
+    </section>
     """
     return layout(
-        text(lang, "admin_publication_recheck_title"),
+        text(lang, "admin_maintenance_title"),
         body,
         current_user=current_user,
         success=success,

@@ -30,7 +30,7 @@ from models import (
 )
 from render import (
     layout,
-    render_admin_publication_recheck_page,
+    render_admin_maintenance_page,
     render_auth_page,
     render_conference_form,
     render_forbidden,
@@ -49,6 +49,7 @@ from services import (
     create_session,
     is_admin_email,
     localized_redirect,
+    load_maintenance_settings,
     load_current_user,
     normalize_email,
     now_utc,
@@ -58,6 +59,7 @@ from services import (
     remove_current_session,
     require_admin,
     require_user,
+    save_maintenance_settings,
     set_session_cookie,
     validation_message,
 )
@@ -780,6 +782,17 @@ async def conference_registration_page(request: Request):
     current_user, response = await require_user(request)
     if response:
         return response
+    maintenance_settings = await load_maintenance_settings(request)
+    if not maintenance_settings["application_creation_enabled"]:
+        return with_language(
+            request,
+            layout(
+                text(lang, "conference_title"),
+                f'<div class="empty">{escape(text(lang, "application_creation_disabled_body"))}</div>',
+                current_user=current_user,
+                lang=lang,
+            ),
+        )
     return with_language(request, render_conference_form(current_user, lang=lang))
 
 
@@ -878,6 +891,16 @@ async def submit_conference_registration(
     current_user, response = await require_user(request)
     if response:
         return response
+    maintenance_settings = await load_maintenance_settings(request)
+    if not maintenance_settings["application_creation_enabled"]:
+        result = render_conference_form(
+            current_user,
+            error=text(lang, "application_creation_disabled_body"),
+            values={"email": current_user["email"]},
+            lang=lang,
+        )
+        result.status_code = 403
+        return with_language(request, result)
 
     middle_name_value = optional_form_value(middle_name)
     department_value = optional_form_value(department)
@@ -1227,6 +1250,9 @@ async def delete_author_registration(
     current_user, response = await require_user(request)
     if response:
         return response
+    maintenance_settings = await load_maintenance_settings(request)
+    if not maintenance_settings["application_deletion_enabled"]:
+        return localized_redirect(request, "/my-registrations?notice=application_deletion_disabled", status_code=303)
 
     object_id = parse_object_id(registration_id)
     if object_id is None:
@@ -1273,6 +1299,12 @@ async def my_registrations(request: Request):
         {"owner_user_id": current_user["_id"]},
         {"publication_file.data": 0, "expert_opinion_file.data": 0, "review_file.data": 0},
     ).sort("created_at", -1).to_list(length=200)
+    maintenance_settings = await load_maintenance_settings(request)
+    empty_action_html = (
+        f' <a href="/conference/register">{escape(text(lang, "records_empty_action"))}</a>'
+        if maintenance_settings["application_creation_enabled"]
+        else ""
+    )
 
     return with_language(
         request,
@@ -1282,8 +1314,9 @@ async def my_registrations(request: Request):
             records,
             admin_mode=False,
             success=notice_text(lang, request.query_params.get("notice")),
-            empty_action_html=f' <a href="/conference/register">{escape(text(lang, "records_empty_action"))}</a>',
+            empty_action_html=empty_action_html,
             empty_text=text(lang, "records_empty_my"),
+            application_deletion_enabled=maintenance_settings["application_deletion_enabled"],
             lang=lang,
         ),
     )
@@ -1315,8 +1348,8 @@ async def admin_registrations(request: Request):
     )
 
 
-@app.get("/admin/publication-validation-recheck", include_in_schema=False)
-async def admin_publication_validation_recheck_page(request: Request):
+@app.get("/admin/maintenance", include_in_schema=False)
+async def admin_maintenance_page(request: Request):
     lang = request_language(request)
     current_user, response = await require_admin(request, lambda user: render_forbidden(user, lang=lang))
     if response:
@@ -1324,8 +1357,11 @@ async def admin_publication_validation_recheck_page(request: Request):
 
     target_filter = {"publication_file.data": {"$exists": True}}
     target_count = await request.app.state.registrations_collection.count_documents(target_filter)
+    maintenance_settings = await load_maintenance_settings(request)
     queued_value = request.query_params.get("queued")
     success = None
+    if request.query_params.get("settings") == "saved":
+        success = text(lang, "admin_maintenance_settings_success")
     if queued_value is not None:
         try:
             queued_count = max(0, int(queued_value))
@@ -1340,16 +1376,36 @@ async def admin_publication_validation_recheck_page(request: Request):
 
     return with_language(
         request,
-        render_admin_publication_recheck_page(
+        render_admin_maintenance_page(
             current_user,
             target_count=target_count,
+            maintenance_settings=maintenance_settings,
             success=success,
             lang=lang,
         ),
     )
 
 
-@app.post("/admin/publication-validation-recheck", include_in_schema=False)
+@app.post("/admin/maintenance", include_in_schema=False)
+async def update_admin_maintenance_settings(
+    request: Request,
+    application_creation_enabled: str | None = Form(None),
+    application_deletion_enabled: str | None = Form(None),
+):
+    lang = request_language(request)
+    current_user, response = await require_admin(request, lambda user: render_forbidden(user, lang=lang))
+    if response:
+        return with_language(request, response)
+
+    await save_maintenance_settings(
+        request,
+        application_creation_enabled=application_creation_enabled == "on",
+        application_deletion_enabled=application_deletion_enabled == "on",
+    )
+    return localized_redirect(request, "/admin/maintenance?settings=saved", status_code=303)
+
+
+@app.post("/admin/maintenance/publication-validation-recheck", include_in_schema=False)
 async def admin_publication_validation_recheck(request: Request):
     lang = request_language(request)
     current_user, response = await require_admin(request, lambda user: render_forbidden(user, lang=lang))
@@ -1368,7 +1424,7 @@ async def admin_publication_validation_recheck(request: Request):
     )
     return localized_redirect(
         request,
-        f"/admin/publication-validation-recheck?queued={update_result.matched_count}",
+        f"/admin/maintenance?queued={update_result.matched_count}",
         status_code=303,
     )
 
