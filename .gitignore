@@ -5,4 +5,4 @@ __pycache__
 checker/test.py
 mongo-backups/
 venv/
-
+.codex/
