@@ -333,10 +333,10 @@ class Validator:
 
     @classmethod
     def _slice_items(
-        cls,
-        structure: ArticleStructure,
-        start_pos: int | None,
-        end_pos: int | None,
+            cls,
+            structure: ArticleStructure,
+            start_pos: int | None,
+            end_pos: int | None,
     ) -> list[ParagraphItem]:
         if start_pos is None:
             return []
@@ -513,7 +513,7 @@ class Validator:
     def _reference_items(cls, structure: ArticleStructure) -> list[ParagraphItem]:
         if structure.sources_pos is None:
             return []
-        return structure.items[structure.sources_pos + 1 :]
+        return structure.items[structure.sources_pos + 1:]
 
     @classmethod
     def _reference_numbers(cls, structure: ArticleStructure) -> list[int]:
@@ -531,7 +531,7 @@ class Validator:
         end = len(structure.items) if structure.sources_pos is None else structure.sources_pos
         if structure.en_keywords_pos + 1 >= end:
             return []
-        return structure.items[structure.en_keywords_pos + 1 : end]
+        return structure.items[structure.en_keywords_pos + 1: end]
 
     @classmethod
     def _expand_reference_number_token(cls, token: str) -> list[int] | None:
@@ -925,8 +925,8 @@ class Validator:
         for section in self.doc.sections:
             dimensions = sorted((section.page_width.cm, section.page_height.cm))
             if not (
-                self._cm_matches(dimensions[0], self.REQUIRED_PAGE_WIDTH_CM)
-                and self._cm_matches(dimensions[1], self.REQUIRED_PAGE_HEIGHT_CM)
+                    self._cm_matches(dimensions[0], self.REQUIRED_PAGE_WIDTH_CM)
+                    and self._cm_matches(dimensions[1], self.REQUIRED_PAGE_HEIGHT_CM)
             ):
                 self._add_error(
                     "Материалы должны быть представлены на формате А4",
@@ -1036,8 +1036,8 @@ class Validator:
             return
 
         if any(
-            rel.reltype == RT.HYPERLINK and not self._is_email_hyperlink("", str(rel.target_ref))
-            for rel in self.doc.part.rels.values()
+                rel.reltype == RT.HYPERLINK and not self._is_email_hyperlink("", str(rel.target_ref))
+                for rel in self.doc.part.rels.values()
         ):
             self._add_error(
                 "Применять гиперссылки в тексте не допускается",
@@ -1174,19 +1174,19 @@ class Validator:
                 )
 
     def _check_author_block(
-        self,
-        *,
-        author_items: list[ParagraphItem],
-        affiliation_items: list[ParagraphItem],
-        lang: str,
-        full_name_message_ru: str,
-        full_name_message_en: str,
-        email_message_ru: str,
-        email_message_en: str,
-        superscript_message_ru: str,
-        superscript_message_en: str,
-        affiliation_message_ru: str,
-        affiliation_message_en: str,
+            self,
+            *,
+            author_items: list[ParagraphItem],
+            affiliation_items: list[ParagraphItem],
+            lang: str,
+            full_name_message_ru: str,
+            full_name_message_en: str,
+            email_message_ru: str,
+            email_message_en: str,
+            superscript_message_ru: str,
+            superscript_message_en: str,
+            affiliation_message_ru: str,
+            affiliation_message_en: str,
     ):
         affiliation_numbers = {
             number
@@ -1266,17 +1266,17 @@ class Validator:
         )
 
     def _check_keywords(
-        self,
-        item: ParagraphItem | None,
-        pattern,
-        count_message_ru: str,
-        count_message_en: str,
-        separator_message_ru: str,
-        separator_message_en: str,
-        abbreviation_message_ru: str,
-        abbreviation_message_en: str,
-        phrase_message_ru: str,
-        phrase_message_en: str,
+            self,
+            item: ParagraphItem | None,
+            pattern,
+            count_message_ru: str,
+            count_message_en: str,
+            separator_message_ru: str,
+            separator_message_en: str,
+            abbreviation_message_ru: str,
+            abbreviation_message_en: str,
+            phrase_message_ru: str,
+            phrase_message_en: str,
     ):
         if item is None:
             return
@@ -1434,98 +1434,3 @@ class Validator:
                 "Список источников должен формироваться в порядке первого упоминания в тексте",
                 "References must be ordered by first mention in the text",
             )
-
-    # Абзацный отступ
-    def check_first_line_indent(self):
-        for p in self.doc.paragraphs:
-            if not self._normalize_text(p.text):
-                continue
-            if self._is_centered(p) or self._is_caption_paragraph(p):
-                continue
-            indent = p.paragraph_format.first_line_indent
-            if indent and round(indent.cm, 2) != 1.25:
-                self.errors.append("Абзацный отступ должен равняться 1.25 единицам")
-                self.errors_eng.append("The paragraph indentation must be 1.25 units")
-                return
-
-    # Email (курсив)
-    def check_email(self):
-        found = False
-
-        for p in self.doc.paragraphs:
-            if self.EMAIL_PATTERN.search(p.text):
-                found = True
-                for run in p.runs:
-                    if self.EMAIL_PATTERN.search(run.text):
-                        if not self._run_is_italic(run, p):
-                            self.errors.append("Email должен быть напечатан курсивом")
-                            self.errors_eng.append("The email must be printed in italics")
-                break
-
-        if not found:
-            self.errors.append("Email автора не найден")
-            self.errors_eng.append("The author's email was not found")
-
-    # Название статьи (по центру, жирное)
-    def check_title(self):
-        for p in self._leading_non_empty_paragraphs(self.doc.paragraphs, self.TITLE_SCAN_LIMIT):
-            text = self._normalize_text(p.text)
-            if not self._is_centered(p):
-                continue
-            if self.EMAIL_PATTERN.search(text):
-                continue
-            if text.lower().startswith(("abstract", "keywords", "key words")):
-                continue
-
-            bold_found = self._paragraph_has_bold_text(p)
-            if not bold_found:
-                self.errors.append("Для названия статьи необходимо использовать полужирное начертание")
-                self.errors_eng.append("The title of the article must be printed in bold")
-            return
-        self.errors.append("Название статьи не найдено")
-        self.errors_eng.append("The title of the article was not found")
-
-    # Ключевые слова
-    def check_keywords(self):
-        for p in self.doc.paragraphs:
-            match = self.KEYWORDS_PATTERN.match(p.text)
-            if match:
-                keywords_text = match.group("keywords").strip()
-                if ";" in keywords_text:
-                    self.errors.append("Разделителем ключевых слов должна быть запятая")
-                    self.errors_eng.append("Keywords must be separated by commas")
-                    return
-
-                keywords = [keyword.strip() for keyword in keywords_text.split(",") if keyword.strip()]
-                if not (5 <= len(keywords) <= 10):
-                    self.errors.append("Ключевых слов должно быть от 5 до 10")
-                    self.errors_eng.append("There should be from 5 to 10 keywords")
-                return
-        self.errors.append("Ключевые слова не найдены")
-        self.errors_eng.append("Keywords of the article were not found")
-
-    # Аннотация
-    def check_annotation(self):
-        for p in self.doc.paragraphs:
-            if "abstract." in p.text.lower():
-                abstract_text = p.text.lower().strip()
-                abstract_text = abstract_text.replace(" ", "")
-                text_len = len(abstract_text) - len("abstract.")
-                if not (300 <= text_len <= 500):
-                    self.errors.append("Аннотация на английском должна содержать от 300 до 500 знаков без учёта пробелов")
-                    self.errors_eng.append("The abstract in English should contain from 300 to 500 characters without spaces")
-                italic = any(run.italic for run in p.runs)
-                if not italic:
-                    self.errors.append("Аннотация должна быть напечатана курсивом")
-                    self.errors_eng.append("The abstract should be printed in italics")
-                return
-        self.errors.append("Аннотация не найдена")
-        self.errors_eng.append("The abstract was not found")
-
-    # Формат ссылок
-    def check_reference_format(self):
-        self.check_references()
-
-    # Список литературы
-    def check_references_count(self):
-        self.check_references()
