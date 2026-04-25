@@ -71,6 +71,10 @@ class Validator:
         r"^\s*(?:Рис\.?|Рисунок|Fig\.?|Figure)\s+(?P<number>\d+)\b",
         re.IGNORECASE,
     )
+    REFERENCE_ENTRY_PATTERN = re.compile(r"^\s*\[(?P<number>\d+)\]\s+\S")
+    BRACKETED_REFERENCE_PATTERN = re.compile(r"\[[^\[\]]+\]")
+    REFERENCE_NUMBER_TOKEN_PATTERN = re.compile(r"^\d+(?:\s*[-–]\s*\d+)?$")
+    REFERENCE_PAGE_TOKEN_PATTERN = re.compile(r"^(?:с|c|p)\.?\s*\d+(?:\s*[-–]\s*\d+)?$", re.IGNORECASE)
     WORD_PATTERN = re.compile(r"[A-Za-zА-Яа-яЁё]+(?:[-'][A-Za-zА-Яа-яЁё]+)?")
     RU_NAME_WORD_PATTERN = re.compile(r"[А-ЯЁ][А-Яа-яЁё-]+")
     EN_NAME_WORD_PATTERN = re.compile(r"[A-Z][A-Za-z'-]+")
@@ -96,6 +100,7 @@ class Validator:
         self.validate_metadata_and_authors()
         self.validate_annotations_and_keywords()
         self.validate_tables_figures_and_formulas()
+        self.validate_references()
         return self.errors, self.errors_eng
 
     def validate_global_requirements(self):
@@ -180,6 +185,9 @@ class Validator:
         self.check_tables()
         self.check_figures()
         self.check_formulas()
+
+    def validate_references(self):
+        self.check_references()
 
     @staticmethod
     def _read_source_bytes(source: str | Path | BinaryIO) -> bytes:
@@ -500,6 +508,88 @@ class Validator:
 
         word_count = len(re.findall(r"[A-Za-zА-Яа-яЁё]{2,}", normalized))
         return word_count <= 6
+
+    @classmethod
+    def _reference_items(cls, structure: ArticleStructure) -> list[ParagraphItem]:
+        if structure.sources_pos is None:
+            return []
+        return structure.items[structure.sources_pos + 1 :]
+
+    @classmethod
+    def _reference_numbers(cls, structure: ArticleStructure) -> list[int]:
+        numbers = []
+        for item in cls._reference_items(structure):
+            match = cls.REFERENCE_ENTRY_PATTERN.match(item.text)
+            if match:
+                numbers.append(int(match.group("number")))
+        return numbers
+
+    @classmethod
+    def _main_text_reference_items(cls, structure: ArticleStructure) -> list[ParagraphItem]:
+        if structure.en_keywords_pos is None:
+            return []
+        end = len(structure.items) if structure.sources_pos is None else structure.sources_pos
+        if structure.en_keywords_pos + 1 >= end:
+            return []
+        return structure.items[structure.en_keywords_pos + 1 : end]
+
+    @classmethod
+    def _expand_reference_number_token(cls, token: str) -> list[int] | None:
+        if cls.REFERENCE_NUMBER_TOKEN_PATTERN.match(token) is None:
+            return None
+
+        parts = [part.strip() for part in re.split(r"[-–]", token)]
+        try:
+            if len(parts) == 1:
+                return [int(parts[0])]
+            start, end = int(parts[0]), int(parts[1])
+        except (IndexError, ValueError):
+            return None
+
+        if start > end:
+            return None
+        return list(range(start, end + 1))
+
+    @classmethod
+    def _parse_reference_marker(cls, marker: str) -> tuple[list[int], bool]:
+        inner_text = marker.strip()[1:-1].strip()
+        if not inner_text:
+            return [], False
+
+        numbers = []
+        for group in re.split(r"\s*;\s*", inner_text):
+            if not group:
+                return [], False
+
+            tokens = [token.strip() for token in group.split(",") if token.strip()]
+            if not tokens:
+                return [], False
+
+            first_numbers = cls._expand_reference_number_token(tokens[0])
+            if first_numbers is None:
+                return [], False
+            numbers.extend(first_numbers)
+
+            for token in tokens[1:]:
+                if cls.REFERENCE_PAGE_TOKEN_PATTERN.match(token):
+                    continue
+                token_numbers = cls._expand_reference_number_token(token)
+                if token_numbers is None:
+                    return [], False
+                numbers.extend(token_numbers)
+
+        return numbers, True
+
+    @classmethod
+    def _unique_in_order(cls, values: list[int]) -> list[int]:
+        seen = set()
+        result = []
+        for value in values:
+            if value in seen:
+                continue
+            seen.add(value)
+            result.append(value)
+        return result
 
     @classmethod
     def _superscript_text(cls, paragraph) -> str:
@@ -1273,6 +1363,68 @@ class Validator:
                 )
                 return
 
+    # Ссылки и список источников
+    def check_references(self):
+        if not hasattr(self, "structure"):
+            self.structure = self._build_article_structure()
+        if self.structure.sources_pos is None:
+            return
+
+        reference_numbers = self._reference_numbers(self.structure)
+        if len(reference_numbers) < 5:
+            self._add_error(
+                "Список источников должен содержать не менее 5 источников",
+                "The list of references must contain at least 5 sources",
+            )
+
+        if reference_numbers and reference_numbers != list(range(1, len(reference_numbers) + 1)):
+            self._add_error(
+                "Источники в списке должны быть пронумерованы последовательно, начиная с [1]",
+                "References must be numbered sequentially starting from [1]",
+            )
+
+        cited_numbers = []
+        for item in self._main_text_reference_items(self.structure):
+            for marker in self.BRACKETED_REFERENCE_PATTERN.findall(item.text):
+                numbers, is_valid = self._parse_reference_marker(marker)
+                if not is_valid:
+                    self._add_error(
+                        f"Неверный формат ссылки: {marker}",
+                        f"Invalid reference format: {marker}",
+                    )
+                    continue
+                cited_numbers.extend(numbers)
+
+        if reference_numbers and not cited_numbers:
+            self._add_error(
+                "В тексте статьи должны быть ссылки на источники из списка",
+                "The article text must cite the listed references",
+            )
+            return
+
+        reference_number_set = set(reference_numbers)
+        cited_number_set = set(cited_numbers)
+        missing_sources = sorted(cited_number_set - reference_number_set)
+        if missing_sources:
+            self._add_error(
+                "В тексте есть ссылки на источники, отсутствующие в списке",
+                "The text cites references that are missing from the reference list",
+            )
+
+        uncited_sources = sorted(reference_number_set - cited_number_set)
+        if uncited_sources:
+            self._add_error(
+                "В тексте должны быть ссылки на все источники из списка",
+                "The text must cite every source from the reference list",
+            )
+
+        first_mentions = self._unique_in_order(cited_numbers)
+        if first_mentions and first_mentions != sorted(first_mentions):
+            self._add_error(
+                "Список источников должен формироваться в порядке первого упоминания в тексте",
+                "References must be ordered by first mention in the text",
+            )
+
     # Абзацный отступ
     def check_first_line_indent(self):
         for p in self.doc.paragraphs:
@@ -1362,30 +1514,8 @@ class Validator:
 
     # Формат ссылок
     def check_reference_format(self):
-        pattern = r"\[\d+(,\s?с\.\s?\d+)?(;\s?\d+(,\s?с\.\s?\d+)?)?\]"
-        for p in self.doc.paragraphs:
-            if p.text == "REFERENCES":
-                return
-            matches = re.findall(r"\[.*?]", p.text)
-            for m in matches:
-                if not re.match(pattern, m):
-                    self.errors.append(f"Неверный формат ссылки: {m}")
-                    self.errors_eng.append(f"Invalid reference format: {m}")
+        self.check_references()
 
     # Список литературы
     def check_references_count(self):
-        start = False
-        count = 0
-        for p in self.doc.paragraphs:
-            lower_text = p.text.lower()
-            if "references" in lower_text or "список литературы" in lower_text: # TODO: нужно ли на английском?
-                start = True
-                continue
-            if start:
-                if p.text.strip() == "":
-                    break
-                count += 1
-
-        if count < 5:
-            self.errors.append("Список литературы должен содержать не менее 5 источников")
-            self.errors_eng.append("The list of references should contain at least 5 sources.")
+        self.check_references()

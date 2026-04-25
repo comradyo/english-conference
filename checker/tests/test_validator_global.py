@@ -168,14 +168,32 @@ def _valid_article_document() -> Document:
         doc,
         "Keywords: energy supply, environmental pollution, nanotechnology, ecological balance, material properties",
     )
-    _add_article_paragraph(doc, "Introduction. " + ("This main article text is intentionally written in English. " * 90))
-    _add_article_paragraph(doc, "Список источников")
-    _add_article_paragraph(doc, "[1] Source title. Moscow, Publisher, 2024, 10 p.")
+    _add_article_paragraph(
+        doc,
+        "Introduction. "
+        + ("This main article text is intentionally written in English. " * 80)
+        + "The first source is cited with a page number [1, p. 17]. "
+        + "The remaining sources are cited as a range [2-5].",
+    )
+    _add_article_paragraph(doc, "References")
+    for number in range(1, 6):
+        _add_article_paragraph(doc, f"[{number}] Source title {number}. Moscow, Publisher, 2024, 10 p.")
     return doc
 
 
 def _valid_article_docx_bytes() -> io.BytesIO:
     return _docx_bytes(_valid_article_document(), pages=4)
+
+
+def _main_text_paragraph(doc: Document):
+    for paragraph in doc.paragraphs:
+        if paragraph.text.startswith("Introduction."):
+            return paragraph
+    raise AssertionError("Main text paragraph was not found")
+
+
+def _reference_paragraphs(doc: Document):
+    return [paragraph for paragraph in doc.paragraphs if paragraph.text.startswith("[")]
 
 
 def _add_hyperlink(paragraph, text: str, url: str) -> None:
@@ -277,7 +295,10 @@ class ValidatorGlobalRequirementsTest(unittest.TestCase):
 
     def test_article_structure_requires_main_text(self):
         doc = _valid_article_document()
-        doc.paragraphs[-3].clear()
+        for paragraph in doc.paragraphs:
+            if paragraph.text.startswith("Introduction."):
+                paragraph.clear()
+                break
 
         errors_ru, _ = Validator(_docx_bytes(doc, pages=4)).validate()
 
@@ -285,7 +306,10 @@ class ValidatorGlobalRequirementsTest(unittest.TestCase):
 
     def test_article_structure_requires_sources_heading(self):
         doc = _valid_article_document()
-        doc.paragraphs[-2].clear()
+        for paragraph in doc.paragraphs:
+            if paragraph.text == "References":
+                paragraph.clear()
+                break
 
         errors_ru, _ = Validator(_docx_bytes(doc, pages=4)).validate()
 
@@ -362,6 +386,33 @@ class ValidatorGlobalRequirementsTest(unittest.TestCase):
 
         self.assertIn("Таблицы должны нумероваться последовательно в порядке упоминания", errors_ru)
         self.assertIn("Формулы должны быть набраны в редакторе формул Word, Equation или MathType", errors_ru)
+
+    def test_reference_format_order_and_missing_sources_are_reported(self):
+        doc = _valid_article_document()
+        _main_text_paragraph(doc).text = (
+            "Introduction. First mention is out of order [2]. "
+            "Then the first source appears [1, с. 12]. "
+            "This cites a missing source [6, p. 7] and contains a bad marker [bad]. "
+        )
+
+        errors_ru, _ = Validator(_docx_bytes(doc, pages=4)).validate()
+
+        self.assertIn("Неверный формат ссылки: [bad]", errors_ru)
+        self.assertIn("В тексте есть ссылки на источники, отсутствующие в списке", errors_ru)
+        self.assertIn("В тексте должны быть ссылки на все источники из списка", errors_ru)
+        self.assertIn("Список источников должен формироваться в порядке первого упоминания в тексте", errors_ru)
+
+    def test_reference_count_and_numbering_violations_are_reported(self):
+        doc = _valid_article_document()
+        reference_paragraphs = _reference_paragraphs(doc)
+        for paragraph in reference_paragraphs[2:]:
+            paragraph.clear()
+        reference_paragraphs[1].text = "[4] Source title 4. Moscow, Publisher, 2024, 10 p."
+
+        errors_ru, _ = Validator(_docx_bytes(doc, pages=4)).validate()
+
+        self.assertIn("Список источников должен содержать не менее 5 источников", errors_ru)
+        self.assertIn("Источники в списке должны быть пронумерованы последовательно, начиная с [1]", errors_ru)
 
 
 if __name__ == "__main__":
