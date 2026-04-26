@@ -49,6 +49,7 @@ class Validator:
     REQUIRED_FONT_NAME = "Times New Roman"
     REQUIRED_FONT_SIZE_PT = 12.0
     REQUIRED_LINE_SPACING = 1.5
+    REQUIRED_PARAGRAPH_INDENT_CM = 1.25
     MIN_PAGE_COUNT = 4
     MAX_PAGE_COUNT = 6
     MIN_CHARACTERS_WITH_SPACES = 6000
@@ -64,7 +65,7 @@ class Validator:
     RU_KEYWORDS_PATTERN = re.compile(r"^\s*Ключевые\s+слова\s*[:.]\s*(?P<keywords>.+)$", re.IGNORECASE)
     EN_KEYWORDS_PATTERN = re.compile(r"^\s*key\s*words?\s*[:.]?\s*(?P<keywords>.+)$", re.IGNORECASE)
     KEYWORDS_PATTERN = EN_KEYWORDS_PATTERN
-    SOURCES_HEADING_PATTERN = re.compile(r"^\s*(Список\s+источников|References)\s*$", re.IGNORECASE)
+    SOURCES_HEADING_PATTERN = re.compile(r"^\s*References\s*$")
     SPIN_PATTERN = re.compile(r"^\s*SPIN(?:-код|-code)?\s*:\s*(?P<code>\d{4}-\d{4})\s*$", re.IGNORECASE)
     TABLE_CAPTION_PATTERN = re.compile(r"^\s*(?:Таблица|Table)\s+(?P<number>\d+)\b", re.IGNORECASE)
     FIGURE_CAPTION_PATTERN = re.compile(
@@ -72,6 +73,7 @@ class Validator:
         re.IGNORECASE,
     )
     REFERENCE_ENTRY_PATTERN = re.compile(r"^\s*\[(?P<number>\d+)\]\s+\S")
+    REFERENCE_ENTRY_FORMAT_PATTERN = re.compile(r"^\[(?P<number>\d+)\] \t\S")
     BRACKETED_REFERENCE_PATTERN = re.compile(r"\[[^\[\]]+\]")
     REFERENCE_NUMBER_TOKEN_PATTERN = re.compile(r"^\d+(?:\s*[-–]\s*\d+)?$")
     REFERENCE_PAGE_TOKEN_PATTERN = re.compile(r"^(?:с|c|p)\.?\s*\d+(?:\s*[-–]\s*\d+)?$", re.IGNORECASE)
@@ -97,6 +99,7 @@ class Validator:
         self.validate_global_requirements()
         self.structure = self._build_article_structure()
         self.validate_article_structure()
+        self.validate_article_formatting()
         self.validate_metadata_and_authors()
         self.validate_annotations_and_keywords()
         self.validate_tables_figures_and_formulas()
@@ -149,7 +152,10 @@ class Validator:
         if structure.main_text_pos is None:
             self._add_error("Основной текст статьи не найден", "The main article text was not found")
         if structure.sources_pos is None:
-            self._add_error("Список источников не найден", "The list of sources was not found")
+            self._add_error(
+                "Заголовок списка источников должен быть References",
+                "The references heading must be 'References'",
+            )
 
         ordered_positions = [
             position
@@ -172,6 +178,9 @@ class Validator:
                 "The article structure must follow the required order",
             )
 
+    def validate_article_formatting(self):
+        self.check_structural_formatting()
+
     def validate_metadata_and_authors(self):
         self.check_udk()
         self.check_titles_metadata()
@@ -188,6 +197,7 @@ class Validator:
 
     def validate_references(self):
         self.check_references()
+        self.check_reference_formatting()
 
     @staticmethod
     def _read_source_bytes(source: str | Path | BinaryIO) -> bytes:
@@ -449,9 +459,16 @@ class Validator:
             return 0
         return len(drawings) + len(picts)
 
+    def _caption_items(self, pattern) -> list[ParagraphItem]:
+        items = []
+        for item in getattr(self, "structure", self._build_article_structure()).items:
+            if pattern.match(item.text):
+                items.append(item)
+        return items
+
     def _caption_numbers(self, pattern) -> list[int]:
         numbers = []
-        for item in getattr(self, "structure", self._build_article_structure()).items:
+        for item in self._caption_items(pattern):
             match = pattern.match(item.text)
             if match:
                 numbers.append(int(match.group("number")))
@@ -495,6 +512,41 @@ class Validator:
         if not widths_twips:
             return None
         return sum(widths_twips) / 1440 * 2.54
+
+    def _top_level_blocks(self):
+        paragraph_by_element_id = {id(paragraph._p): paragraph for paragraph in self.doc.paragraphs}
+        for child in self.doc.element.body.iterchildren():
+            name = self._local_name(child.tag)
+            if name == "p":
+                paragraph = paragraph_by_element_id.get(id(child))
+                if paragraph is not None:
+                    yield "paragraph", paragraph
+            elif name == "tbl":
+                yield "table", child
+
+    @classmethod
+    def _previous_non_empty_paragraphs(cls, blocks: list[tuple[str, Any]], table_index: int, count: int):
+        paragraphs = []
+        for block_type, block in reversed(blocks[:table_index]):
+            if block_type == "table":
+                break
+            if cls._normalize_text(block.text):
+                paragraphs.append(block)
+                if len(paragraphs) == count:
+                    break
+        return list(reversed(paragraphs))
+
+    def _top_level_table_caption_pairs(self) -> list[tuple[Any | None, Any | None]]:
+        blocks = list(self._top_level_blocks())
+        pairs = []
+        for index, (block_type, _) in enumerate(blocks):
+            if block_type != "table":
+                continue
+            previous_paragraphs = self._previous_non_empty_paragraphs(blocks, index, 2)
+            number_paragraph = previous_paragraphs[0] if len(previous_paragraphs) == 2 else None
+            title_paragraph = previous_paragraphs[1] if len(previous_paragraphs) == 2 else None
+            pairs.append((number_paragraph, title_paragraph))
+        return pairs
 
     @classmethod
     def _looks_like_plain_text_formula(cls, text: str) -> bool:
@@ -829,6 +881,32 @@ class Validator:
 
         return False
 
+    @classmethod
+    def _effective_first_line_indent_cm(cls, paragraph) -> float:
+        indent = paragraph.paragraph_format.first_line_indent
+        if indent is not None:
+            return indent.cm
+
+        for style in cls._iter_style_chain(paragraph.style):
+            indent = style.paragraph_format.first_line_indent
+            if indent is not None:
+                return indent.cm
+
+        return 0.0
+
+    @classmethod
+    def _effective_left_indent_cm(cls, paragraph) -> float:
+        indent = paragraph.paragraph_format.left_indent
+        if indent is not None:
+            return indent.cm
+
+        for style in cls._iter_style_chain(paragraph.style):
+            indent = style.paragraph_format.left_indent
+            if indent is not None:
+                return indent.cm
+
+        return 0.0
+
     # Проверяет, что стиль (или предки, от которых он наследуется), является полужирным
     @classmethod
     def _style_font_bold(cls, style) -> bool | None:
@@ -836,6 +914,22 @@ class Validator:
             if current_style.font.bold is not None:
                 return current_style.font.bold
         return None
+
+    @classmethod
+    def _run_is_bold(cls, run, paragraph) -> bool:
+        if run.bold is not None:
+            return bool(run.bold)
+
+        if run.style is not None:
+            run_style_bold = cls._style_font_bold(run.style)
+            if run_style_bold is not None:
+                return run_style_bold
+
+        paragraph_style_bold = cls._style_font_bold(paragraph.style)
+        if paragraph_style_bold is not None:
+            return paragraph_style_bold
+
+        return False
 
     # Проверяет, что стиль (или предки, от которых он наследуется), является курсивным
     @classmethod
@@ -893,11 +987,89 @@ class Validator:
     def _is_centered(cls, paragraph) -> bool:
         return cls._effective_alignment(paragraph) == WD_ALIGN_PARAGRAPH.CENTER
 
+    @classmethod
+    def _is_right_aligned(cls, paragraph) -> bool:
+        return cls._effective_alignment(paragraph) == WD_ALIGN_PARAGRAPH.RIGHT
+
+    @classmethod
+    def _is_justified(cls, paragraph) -> bool:
+        return cls._effective_alignment(paragraph) == WD_ALIGN_PARAGRAPH.JUSTIFY
+
+    @classmethod
+    def _is_left_or_justified(cls, paragraph) -> bool:
+        alignment = cls._effective_alignment(paragraph)
+        return alignment in (None, WD_ALIGN_PARAGRAPH.LEFT, WD_ALIGN_PARAGRAPH.JUSTIFY)
+
     # Проверяет, что параграф является подписью к изображению/таблице
     @classmethod
     def _is_caption_paragraph(cls, paragraph) -> bool:
         text = cls._normalize_text(paragraph.text).lower()
         return text.startswith(cls.CAPTION_PREFIXES)
+
+    @classmethod
+    def _visible_run_spans(cls, paragraph):
+        position = 0
+        spans = []
+        for run in paragraph.runs:
+            text = run.text or ""
+            start = position
+            end = start + len(text)
+            if cls._has_visible_text(text):
+                spans.append((run, start, end, text))
+            position = end
+        return spans
+
+    @classmethod
+    def _runs_in_text_range(cls, paragraph, start: int, end: int):
+        for run, run_start, run_end, text in cls._visible_run_spans(paragraph):
+            if run_end <= start or run_start >= end:
+                continue
+            overlap_start = max(start, run_start) - run_start
+            overlap_end = min(end, run_end) - run_start
+            if cls._has_visible_text(text[overlap_start:overlap_end]):
+                yield run
+
+    @classmethod
+    def _paragraph_runs_have_style(
+            cls,
+            paragraph,
+            *,
+            bold: bool | None = None,
+            italic: bool | None = None,
+            start: int = 0,
+            end: int | None = None,
+    ) -> bool:
+        if end is None:
+            end = len(paragraph.text or "")
+        for run in cls._runs_in_text_range(paragraph, start, end):
+            if bold is not None and cls._run_is_bold(run, paragraph) != bold:
+                return False
+            if italic is not None and cls._run_is_italic(run, paragraph) != italic:
+                return False
+        return True
+
+    @classmethod
+    def _paragraph_has_bold_run(cls, paragraph) -> bool:
+        return any(cls._run_is_bold(run, paragraph) for run, *_ in cls._visible_run_spans(paragraph))
+
+    @classmethod
+    def _paragraph_has_italic_run(cls, paragraph) -> bool:
+        return any(cls._run_is_italic(run, paragraph) for run, *_ in cls._visible_run_spans(paragraph))
+
+    @classmethod
+    def _paragraph_has_allowed_main_indent(cls, paragraph) -> bool:
+        indent_cm = cls._effective_first_line_indent_cm(paragraph)
+        return cls._cm_matches(indent_cm, 0.0) or cls._cm_matches(indent_cm, cls.REQUIRED_PARAGRAPH_INDENT_CM)
+
+    @classmethod
+    def _paragraph_has_reference_hanging_indent(cls, paragraph) -> bool:
+        left_indent_cm = cls._effective_left_indent_cm(paragraph)
+        first_line_indent_cm = cls._effective_first_line_indent_cm(paragraph)
+        return (
+            left_indent_cm > cls.CM_TOLERANCE
+            and first_line_indent_cm < -cls.CM_TOLERANCE
+            and cls._cm_matches(left_indent_cm, abs(first_line_indent_cm))
+        )
 
     # Первые *limit* штук непустых параграфов
     @classmethod
@@ -1050,6 +1222,291 @@ class Validator:
             self._add_error(
                 "Разрывы разделов внутри текста не допускаются",
                 "Section breaks inside the text are not allowed",
+            )
+
+    def check_structural_formatting(self):
+        structure = self.structure
+
+        self._check_left_or_justified(
+            self._item_at(structure, structure.udk_pos),
+            "УДК должен быть выровнен по левому краю или по ширине",
+            "UDC must be left-aligned or justified",
+        )
+        self._check_plain_paragraph(
+            self._item_at(structure, structure.udk_pos),
+            "УДК не должен быть выделен полужирным или курсивом",
+            "UDC must not be bold or italic",
+        )
+
+        self._check_title_formatting(
+            self._item_at(structure, structure.ru_title_pos),
+            "Заголовок статьи должен быть выровнен по левому краю или по ширине",
+            "The article title must be left-aligned or justified",
+            "Заголовок статьи должен быть выделен полужирным и не должен быть набран курсивом",
+            "The article title must be bold and must not be italic",
+        )
+        self._check_title_formatting(
+            self._item_at(structure, structure.en_title_pos),
+            "Заголовок статьи на английском языке должен быть выровнен по левому краю или по ширине",
+            "The English article title must be left-aligned or justified",
+            "Заголовок статьи на английском языке должен быть выделен полужирным и не должен быть набран курсивом",
+            "The English article title must be bold and must not be italic",
+        )
+
+        for item in self._ru_author_items(structure):
+            self._check_author_text_formatting(
+                item,
+                "ФИО и надстрочный знак автора должны быть выделены полужирным",
+                "The author's full name and superscript marker must be bold",
+                "Email автора не должен быть выделен полужирным или курсивом",
+                "The author's email must not be bold or italic",
+                "Сведения об авторах не должны быть набраны курсивом",
+                "Author information must not be italic",
+            )
+        for item in self._en_author_items(structure):
+            self._check_author_text_formatting(
+                item,
+                "ФИО автора в английском блоке и надстрочный знак должны быть выделены полужирным",
+                "The English author's full name and superscript marker must be bold",
+                "Email автора в английском блоке не должен быть выделен полужирным или курсивом",
+                "The English author's email must not be bold or italic",
+                "Сведения об авторах на английском языке не должны быть набраны курсивом",
+                "English author information must not be italic",
+            )
+
+        for item in self._ru_affiliation_items(structure):
+            self._check_affiliation_formatting(
+                item,
+                "Аффилиации должны быть выровнены по левому краю или по ширине",
+                "Affiliations must be left-aligned or justified",
+                "Аффилиации должны быть набраны курсивом без полужирного начертания",
+                "Affiliations must be italic and must not be bold",
+            )
+        for item in self._en_affiliation_items(structure):
+            self._check_affiliation_formatting(
+                item,
+                "Аффилиации на английском языке должны быть выровнены по левому краю или по ширине",
+                "English affiliations must be left-aligned or justified",
+                "Аффилиации на английском языке должны быть набраны курсивом без полужирного начертания",
+                "English affiliations must be italic and must not be bold",
+            )
+
+        for item in self._slice_items(structure, structure.ru_title_pos, structure.ru_abstract_pos):
+            if self._is_spin_line(item.text):
+                self._check_plain_paragraph(
+                    item,
+                    "SPIN-код не должен быть выделен полужирным или курсивом",
+                    "SPIN code must not be bold or italic",
+                )
+        for item in self._slice_items(structure, structure.en_title_pos, structure.en_abstract_pos):
+            if self._is_spin_line(item.text):
+                self._check_plain_paragraph(
+                    item,
+                    "SPIN-code не должен быть выделен полужирным или курсивом",
+                    "SPIN code must not be bold or italic",
+                )
+
+        self._check_labeled_paragraph_formatting(
+            self._item_at(structure, structure.ru_abstract_pos),
+            self.RU_ABSTRACT_PATTERN,
+            "body",
+            "Аннотация должна быть выровнена по ширине",
+            "The abstract must be justified",
+            "Метка «Аннотация.» должна быть выделена полужирным и не должна быть набрана курсивом",
+            "The 'Abstract' label must be bold and must not be italic",
+            "Текст аннотации не должен быть выделен полужирным или курсивом",
+            "The abstract text must not be bold or italic",
+        )
+        self._check_labeled_paragraph_formatting(
+            self._item_at(structure, structure.ru_keywords_pos),
+            self.RU_KEYWORDS_PATTERN,
+            "keywords",
+            "Ключевые слова должны быть выровнены по ширине",
+            "Keywords must be justified",
+            "Метка «Ключевые слова:» должна быть выделена полужирным и не должна быть набрана курсивом",
+            "The 'Keywords' label must be bold and must not be italic",
+            "Текст ключевых слов не должен быть выделен полужирным или курсивом",
+            "Keywords text must not be bold or italic",
+        )
+        self._check_labeled_paragraph_formatting(
+            self._item_at(structure, structure.en_abstract_pos),
+            self.EN_ABSTRACT_PATTERN,
+            "body",
+            "Аннотация на английском языке должна быть выровнена по ширине",
+            "The English abstract must be justified",
+            "Метка «Abstract.» должна быть выделена полужирным и не должна быть набрана курсивом",
+            "The 'Abstract' label must be bold and must not be italic",
+            "Текст аннотации на английском языке не должен быть выделен полужирным или курсивом",
+            "The English abstract text must not be bold or italic",
+        )
+        self._check_labeled_paragraph_formatting(
+            self._item_at(structure, structure.en_keywords_pos),
+            self.EN_KEYWORDS_PATTERN,
+            "keywords",
+            "Ключевые слова на английском языке должны быть выровнены по ширине",
+            "English keywords must be justified",
+            "Метка «Keywords:» должна быть выделена полужирным и не должна быть набрана курсивом",
+            "The 'Keywords' label must be bold and must not be italic",
+            "Текст ключевых слов на английском языке не должен быть выделен полужирным или курсивом",
+            "English keywords text must not be bold or italic",
+        )
+
+        self._check_main_text_formatting(structure)
+        self._check_references_heading_formatting(structure)
+
+    def _check_left_or_justified(self, item: ParagraphItem | None, message_ru: str, message_en: str):
+        if item is not None and not self._is_left_or_justified(item.paragraph):
+            self._add_error(message_ru, message_en)
+
+    def _check_plain_paragraph(self, item: ParagraphItem | None, message_ru: str, message_en: str):
+        if item is None:
+            return
+        if self._paragraph_has_bold_run(item.paragraph) or self._paragraph_has_italic_run(item.paragraph):
+            self._add_error(message_ru, message_en)
+
+    def _check_title_formatting(
+            self,
+            item: ParagraphItem | None,
+            alignment_message_ru: str,
+            alignment_message_en: str,
+            style_message_ru: str,
+            style_message_en: str,
+    ):
+        if item is None:
+            return
+        if not self._is_left_or_justified(item.paragraph):
+            self._add_error(alignment_message_ru, alignment_message_en)
+        if not self._paragraph_runs_have_style(item.paragraph, bold=True, italic=False):
+            self._add_error(style_message_ru, style_message_en)
+
+    def _check_author_text_formatting(
+            self,
+            item: ParagraphItem,
+            name_message_ru: str,
+            name_message_en: str,
+            email_message_ru: str,
+            email_message_en: str,
+            italic_message_ru: str,
+            italic_message_en: str,
+    ):
+        paragraph = item.paragraph
+        if self._paragraph_has_italic_run(paragraph):
+            self._add_error(italic_message_ru, italic_message_en)
+
+        name_end = len(self._author_name_part(item.text).rstrip())
+        if name_end and not self._paragraph_runs_have_style(paragraph, bold=True, italic=False, start=0, end=name_end):
+            self._add_error(name_message_ru, name_message_en)
+
+        superscript_runs = [
+            run
+            for run, _, _, _ in self._visible_run_spans(paragraph)
+            if run.font.superscript
+        ]
+        if any(not self._run_is_bold(run, paragraph) or self._run_is_italic(run, paragraph) for run in superscript_runs):
+            self._add_error(name_message_ru, name_message_en)
+
+        for match in self.EMAIL_PATTERN.finditer(paragraph.text):
+            if not self._paragraph_runs_have_style(
+                    paragraph,
+                    bold=False,
+                    italic=False,
+                    start=match.start(),
+                    end=match.end(),
+            ):
+                self._add_error(email_message_ru, email_message_en)
+                break
+
+    def _check_affiliation_formatting(
+            self,
+            item: ParagraphItem,
+            alignment_message_ru: str,
+            alignment_message_en: str,
+            style_message_ru: str,
+            style_message_en: str,
+    ):
+        if not self._is_left_or_justified(item.paragraph):
+            self._add_error(alignment_message_ru, alignment_message_en)
+        if not self._paragraph_runs_have_style(item.paragraph, bold=False, italic=True):
+            self._add_error(style_message_ru, style_message_en)
+
+    def _check_labeled_paragraph_formatting(
+            self,
+            item: ParagraphItem | None,
+            pattern,
+            body_group: str,
+            alignment_message_ru: str,
+            alignment_message_en: str,
+            label_message_ru: str,
+            label_message_en: str,
+            body_message_ru: str,
+            body_message_en: str,
+    ):
+        if item is None:
+            return
+        if not self._is_justified(item.paragraph):
+            self._add_error(alignment_message_ru, alignment_message_en)
+
+        match = pattern.match(item.text)
+        if match is None:
+            return
+
+        body_start = match.start(body_group)
+        if not self._paragraph_runs_have_style(item.paragraph, bold=True, italic=False, start=0, end=body_start):
+            self._add_error(label_message_ru, label_message_en)
+        if not self._paragraph_runs_have_style(
+                item.paragraph,
+                bold=False,
+                italic=False,
+                start=body_start,
+                end=len(item.text),
+        ):
+            self._add_error(body_message_ru, body_message_en)
+
+    def _check_main_text_formatting(self, structure: ArticleStructure):
+        if structure.main_text_pos is None or structure.sources_pos is None:
+            return
+        end = structure.sources_pos
+        skip_numbers = self._table_title_paragraph_numbers(structure)
+
+        for item in structure.items[structure.main_text_pos:end]:
+            if item.number in skip_numbers:
+                continue
+            if self.TABLE_CAPTION_PATTERN.match(item.text) or self.FIGURE_CAPTION_PATTERN.match(item.text):
+                continue
+            if not self._paragraph_has_text_requiring_text_format(item.paragraph):
+                continue
+            if not self._is_left_or_justified(item.paragraph):
+                self._add_error(
+                    "Абзацы основного текста должны быть выровнены по левому краю или по ширине",
+                    "Main text paragraphs must be left-aligned or justified",
+                )
+            if not self._paragraph_has_allowed_main_indent(item.paragraph):
+                self._add_error(
+                    f"Абзацный отступ основного текста должен быть 0 или {self.REQUIRED_PARAGRAPH_INDENT_CM:g} см",
+                    f"The first-line indent in main text must be 0 or {self.REQUIRED_PARAGRAPH_INDENT_CM:g} cm",
+                )
+
+    def _table_title_paragraph_numbers(self, structure: ArticleStructure) -> set[int]:
+        title_numbers = set()
+        items = structure.items
+        for index, item in enumerate(items[:-1]):
+            if self.TABLE_CAPTION_PATTERN.match(item.text):
+                title_numbers.add(items[index + 1].number)
+        return title_numbers
+
+    def _check_references_heading_formatting(self, structure: ArticleStructure):
+        item = self._item_at(structure, structure.sources_pos)
+        if item is None:
+            return
+        if not self._is_left_or_justified(item.paragraph):
+            self._add_error(
+                "Заголовок References должен быть выровнен по левому краю или по ширине",
+                "The References heading must be left-aligned or justified",
+            )
+        if not self._paragraph_runs_have_style(item.paragraph, bold=True, italic=False):
+            self._add_error(
+                "Заголовок References должен быть выделен полужирным и не должен быть набран курсивом",
+                "The References heading must be bold and must not be italic",
             )
 
     # УДК
@@ -1251,6 +1708,8 @@ class Validator:
             "Keywords must not contain abbreviations",
             "Ключевые фразы не должны быть длиннее четырех слов",
             "Keyword phrases must not be longer than four words",
+            "Ключевые слова не должны заканчиваться точкой",
+            "Keywords must not end with a period",
         )
         self._check_keywords(
             self._item_at(self.structure, self.structure.en_keywords_pos),
@@ -1263,6 +1722,8 @@ class Validator:
             "English keywords must not contain abbreviations",
             "Ключевые фразы на английском языке не должны быть длиннее четырех слов",
             "English keyword phrases must not be longer than four words",
+            "Ключевые слова на английском языке не должны заканчиваться точкой",
+            "English keywords must not end with a period",
         )
 
     def _check_keywords(
@@ -1277,6 +1738,8 @@ class Validator:
             abbreviation_message_en: str,
             phrase_message_ru: str,
             phrase_message_en: str,
+            period_message_ru: str,
+            period_message_en: str,
     ):
         if item is None:
             return
@@ -1287,6 +1750,8 @@ class Validator:
         keywords_text = match.group("keywords").strip()
         if ";" in keywords_text:
             self._add_error(separator_message_ru, separator_message_en)
+        if keywords_text.endswith("."):
+            self._add_error(period_message_ru, period_message_en)
 
         keywords = [keyword.strip() for keyword in keywords_text.split(",") if keyword.strip()]
         if not (5 <= len(keywords) <= 7):
@@ -1326,6 +1791,9 @@ class Validator:
                 "Tables must be numbered sequentially in order of mention",
             )
 
+        self._check_table_caption_formatting()
+        self._check_table_content_font_and_size(tables)
+
         available_width_cm = self._available_text_width_cm()
         if available_width_cm is None:
             return
@@ -1337,6 +1805,73 @@ class Validator:
                     "Tables must fit within the working area",
                 )
                 return
+
+    def _check_table_caption_formatting(self):
+        for number_paragraph, title_paragraph in self._top_level_table_caption_pairs():
+            if (
+                    number_paragraph is None
+                    or title_paragraph is None
+                    or self.TABLE_CAPTION_PATTERN.match(number_paragraph.text) is None
+            ):
+                self._add_error(
+                    "Номер таблицы должен быть расположен перед заголовком таблицы в формате «Таблица N»",
+                    "The table number must be placed before the table title in the format 'Table N'",
+                )
+                continue
+
+            if not self._is_right_aligned(number_paragraph) or not self._paragraph_runs_have_style(
+                    number_paragraph,
+                    bold=False,
+                    italic=True,
+            ):
+                self._add_error(
+                    "Номер таблицы должен быть выровнен по правому краю и набран курсивом",
+                    "The table number must be right-aligned and italic",
+                )
+
+            if (
+                    self.TABLE_CAPTION_PATTERN.match(title_paragraph.text)
+                    or self.FIGURE_CAPTION_PATTERN.match(title_paragraph.text)
+                    or self.SOURCES_HEADING_PATTERN.match(title_paragraph.text)
+            ):
+                self._add_error(
+                    "После номера таблицы должен быть указан заголовок таблицы",
+                    "A table title must follow the table number",
+                )
+                continue
+
+            if not self._is_centered(title_paragraph) or not self._paragraph_runs_have_style(
+                    title_paragraph,
+                    bold=True,
+                    italic=False,
+            ):
+                self._add_error(
+                    "Заголовок таблицы должен быть выровнен по центру и выделен полужирным",
+                    "The table title must be centered and bold",
+                )
+
+    def _check_table_content_font_and_size(self, tables: list[Any]):
+        for table in tables:
+            for paragraph in self._iter_table_paragraphs(table):
+                for run in paragraph.runs:
+                    if not self._run_has_text_requiring_text_format(run):
+                        continue
+
+                    font_name = self._effective_run_font_name(run, paragraph)
+                    if font_name and font_name.lower() != self.REQUIRED_FONT_NAME.lower():
+                        self._add_error(
+                            "В таблицах необходимо использовать шрифт Times New Roman",
+                            "Tables must use the Times New Roman font",
+                        )
+                        return
+
+                    font_size_pt = self._effective_run_font_size_pt(run, paragraph)
+                    if font_size_pt is not None and not self._pt_matches(font_size_pt, self.REQUIRED_FONT_SIZE_PT):
+                        self._add_error(
+                            "Размер шрифта в таблицах должен быть 12",
+                            "The font size in tables must be 12",
+                        )
+                        return
 
     # Рисунки
     def check_figures(self):
@@ -1433,4 +1968,49 @@ class Validator:
             self._add_error(
                 "Список источников должен формироваться в порядке первого упоминания в тексте",
                 "References must be ordered by first mention in the text",
+            )
+
+    def check_reference_formatting(self):
+        if not hasattr(self, "structure"):
+            self.structure = self._build_article_structure()
+        if self.structure.sources_pos is None:
+            return
+
+        bad_entry_pattern = False
+        bad_alignment = False
+        bad_indent = False
+        bad_bold = False
+
+        for item in self._reference_items(self.structure):
+            if self.REFERENCE_ENTRY_PATTERN.match(item.text) is None:
+                continue
+
+            if not self.REFERENCE_ENTRY_FORMAT_PATTERN.match(item.paragraph.text):
+                bad_entry_pattern = True
+            if not self._is_left_or_justified(item.paragraph):
+                bad_alignment = True
+            if not self._paragraph_has_reference_hanging_indent(item.paragraph):
+                bad_indent = True
+            if self._paragraph_has_bold_run(item.paragraph):
+                bad_bold = True
+
+        if bad_entry_pattern:
+            self._add_error(
+                "Элементы списка источников должны начинаться с формата «[N] » и табуляции после пробела",
+                "Reference entries must start with '[N] ' followed by a tab",
+            )
+        if bad_alignment:
+            self._add_error(
+                "Элементы списка источников должны быть выровнены по левому краю или по ширине",
+                "Reference entries must be left-aligned or justified",
+            )
+        if bad_indent:
+            self._add_error(
+                "Элементы списка источников должны иметь висячий отступ, равный левому отступу",
+                "Reference entries must use a hanging indent equal to the left indent",
+            )
+        if bad_bold:
+            self._add_error(
+                "Элементы списка источников не должны содержать полужирное начертание",
+                "Reference entries must not contain bold text",
             )

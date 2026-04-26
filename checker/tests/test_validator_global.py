@@ -8,6 +8,7 @@ from xml.etree import ElementTree
 
 from docx import Document
 from docx.enum.section import WD_ORIENT
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from docx.oxml import OxmlElement, parse_xml
 from docx.oxml.ns import qn
@@ -93,13 +94,40 @@ def _add_superscript_run(paragraph, text: str) -> None:
     run.bold = True
 
 
-def _add_article_paragraph(doc: Document, text: str, *, bold: bool = False):
+def _add_article_paragraph(
+        doc: Document,
+        text: str,
+        *,
+        bold: bool = False,
+        italic: bool = False,
+        alignment=None,
+        first_line_indent_cm: float | None = None,
+):
     paragraph = doc.add_paragraph()
     paragraph.paragraph_format.line_spacing = 1.5
+    if alignment is not None:
+        paragraph.alignment = alignment
+    if first_line_indent_cm is not None:
+        paragraph.paragraph_format.first_line_indent = Cm(first_line_indent_cm)
     run = paragraph.add_run(text)
     run.font.name = "Times New Roman"
     run.font.size = Pt(12)
     run.bold = bold
+    run.italic = italic
+    return paragraph
+
+
+def _add_labeled_article_paragraph(doc: Document, label: str, body: str):
+    paragraph = doc.add_paragraph()
+    paragraph.paragraph_format.line_spacing = 1.5
+    paragraph.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    label_run = paragraph.add_run(label)
+    label_run.font.name = "Times New Roman"
+    label_run.font.size = Pt(12)
+    label_run.bold = True
+    body_run = paragraph.add_run(" " + body)
+    body_run.font.name = "Times New Roman"
+    body_run.font.size = Pt(12)
     return paragraph
 
 
@@ -117,6 +145,11 @@ def _add_table(doc: Document) -> None:
         run.font.size = Pt(12)
 
 
+def _add_table_caption_and_title(doc: Document, number: int, title: str = "Заголовок таблицы") -> None:
+    _add_article_paragraph(doc, f"Таблица {number}", italic=True, alignment=WD_ALIGN_PARAGRAPH.RIGHT)
+    _add_article_paragraph(doc, title, bold=True, alignment=WD_ALIGN_PARAGRAPH.CENTER)
+
+
 def _add_author_paragraph(doc: Document, name: str, marker: str, email: str):
     paragraph = doc.add_paragraph()
     paragraph.paragraph_format.line_spacing = 1.5
@@ -128,6 +161,22 @@ def _add_author_paragraph(doc: Document, name: str, marker: str, email: str):
     email_run = paragraph.add_run(f" {email}")
     email_run.font.name = "Times New Roman"
     email_run.font.size = Pt(12)
+    return paragraph
+
+
+def _add_reference_paragraph(doc: Document, number: int, text: str | None = None):
+    paragraph = doc.add_paragraph()
+    paragraph.paragraph_format.line_spacing = 1.5
+    paragraph.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    paragraph.paragraph_format.left_indent = Cm(Validator.REQUIRED_PARAGRAPH_INDENT_CM)
+    paragraph.paragraph_format.first_line_indent = Cm(-Validator.REQUIRED_PARAGRAPH_INDENT_CM)
+
+    prefix_run = paragraph.add_run(f"[{number}] ")
+    prefix_run.font.name = "Times New Roman"
+    prefix_run.font.size = Pt(12)
+    body_run = paragraph.add_run("\t" + (text or f"Source title {number}. Moscow, Publisher, 2024, 10 p."))
+    body_run.font.name = "Times New Roman"
+    body_run.font.size = Pt(12)
     return paragraph
 
 
@@ -150,23 +199,33 @@ def _valid_article_document() -> Document:
     _add_author_paragraph(doc, "Иванов Иван Иванович", "1", "ivanov@example.com")
     _add_article_paragraph(doc, "SPIN-код: 1234-5678")
     _add_author_paragraph(doc, "Петров Петр Петрович", "2(*)", "petrov@example.com")
-    _add_article_paragraph(doc, "1 ФГБУ НПО Тайфун, Москва, Россия")
-    _add_article_paragraph(doc, "2 МГТУ им. Н.Э. Баумана, Москва, Россия")
-    _add_article_paragraph(doc, "Аннотация. " + _long_text("Рассмотрены перспективы развития технологий и экономики многоразовых космических систем."))
-    _add_article_paragraph(
+    _add_article_paragraph(doc, "1 ФГБУ НПО Тайфун, Москва, Россия", italic=True)
+    _add_article_paragraph(doc, "2 МГТУ им. Н.Э. Баумана, Москва, Россия", italic=True)
+    _add_labeled_article_paragraph(
         doc,
-        "Ключевые слова: энергообеспечение, загрязнение окружающей среды, нанотехнологии, экологическое равновесие, свойства наноматериалов",
+        "Аннотация.",
+        _long_text("Рассмотрены перспективы развития технологий и экономики многоразовых космических систем."),
+    )
+    _add_labeled_article_paragraph(
+        doc,
+        "Ключевые слова:",
+        "энергообеспечение, загрязнение окружающей среды, нанотехнологии, экологическое равновесие, свойства наноматериалов",
     )
     _add_article_paragraph(doc, "Economy of Reusability of Future Cosmonautics and Issues of Efficiency", bold=True)
     _add_author_paragraph(doc, "Ivanov Ivan Ivanovich", "1", "ivanov@example.com")
     _add_article_paragraph(doc, "SPIN-code: 1234-5678")
     _add_author_paragraph(doc, "Petrov Petr Petrovich", "2(*)", "petrov@example.com")
-    _add_article_paragraph(doc, "1 FSBI NPO Typhoon, Moscow, Russia")
-    _add_article_paragraph(doc, "2 BMSTU, Moscow, Russia")
-    _add_article_paragraph(doc, "Abstract. " + _long_text("The article considers technological and economic aspects of reusable space systems."))
-    _add_article_paragraph(
+    _add_article_paragraph(doc, "1 FSBI NPO Typhoon, Moscow, Russia", italic=True)
+    _add_article_paragraph(doc, "2 BMSTU, Moscow, Russia", italic=True)
+    _add_labeled_article_paragraph(
         doc,
-        "Keywords: energy supply, environmental pollution, nanotechnology, ecological balance, material properties",
+        "Abstract.",
+        _long_text("The article considers technological and economic aspects of reusable space systems."),
+    )
+    _add_labeled_article_paragraph(
+        doc,
+        "Keywords:",
+        "energy supply, environmental pollution, nanotechnology, ecological balance, material properties",
     )
     _add_article_paragraph(
         doc,
@@ -175,9 +234,9 @@ def _valid_article_document() -> Document:
         + "The first source is cited with a page number [1, p. 17]. "
         + "The remaining sources are cited as a range [2-5].",
     )
-    _add_article_paragraph(doc, "References")
+    _add_article_paragraph(doc, "References", bold=True)
     for number in range(1, 6):
-        _add_article_paragraph(doc, f"[{number}] Source title {number}. Moscow, Publisher, 2024, 10 p.")
+        _add_reference_paragraph(doc, number)
     return doc
 
 
@@ -354,7 +413,7 @@ class ValidatorGlobalRequirementsTest(unittest.TestCase):
 
         errors_ru, _ = Validator(_docx_bytes(doc, pages=4)).validate()
 
-        self.assertIn("Список источников не найден", errors_ru)
+        self.assertIn("Заголовок списка источников должен быть References", errors_ru)
 
     def test_metadata_and_keyword_violations_are_reported(self):
         doc = _valid_article_document()
@@ -375,9 +434,46 @@ class ValidatorGlobalRequirementsTest(unittest.TestCase):
         self.assertIn("Ключевые слова не должны содержать аббревиатуры", errors_ru)
         self.assertIn("Ключевых слов на английском языке должно быть от 5 до 7", errors_ru)
 
+    def test_keywords_must_not_end_with_period(self):
+        doc = _valid_article_document()
+        doc.paragraphs[8].runs[-1].text = (
+            " энергообеспечение, загрязнение окружающей среды, нанотехнологии, "
+            "экологическое равновесие, свойства наноматериалов."
+        )
+        doc.paragraphs[16].runs[-1].text = (
+            " energy supply, environmental pollution, nanotechnology, ecological balance, material properties."
+        )
+
+        errors_ru, _ = Validator(_docx_bytes(doc, pages=4)).validate()
+
+        self.assertIn("Ключевые слова не должны заканчиваться точкой", errors_ru)
+        self.assertIn("Ключевые слова на английском языке не должны заканчиваться точкой", errors_ru)
+
+    def test_structural_formatting_violations_are_reported(self):
+        doc = _valid_article_document()
+        doc.paragraphs[1].runs[0].bold = False
+        doc.paragraphs[5].runs[0].italic = False
+        doc.paragraphs[7].alignment = WD_ALIGN_PARAGRAPH.LEFT
+        _main_text_paragraph(doc).paragraph_format.first_line_indent = Cm(1)
+        for paragraph in doc.paragraphs:
+            if paragraph.text == "References":
+                paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                break
+
+        errors_ru, _ = Validator(_docx_bytes(doc, pages=4)).validate()
+
+        self.assertIn(
+            "Заголовок статьи должен быть выделен полужирным и не должен быть набран курсивом",
+            errors_ru,
+        )
+        self.assertIn("Аффилиации должны быть набраны курсивом без полужирного начертания", errors_ru)
+        self.assertIn("Аннотация должна быть выровнена по ширине", errors_ru)
+        self.assertIn("Абзацный отступ основного текста должен быть 0 или 1.25 см", errors_ru)
+        self.assertIn("Заголовок References должен быть выровнен по левому краю или по ширине", errors_ru)
+
     def test_tables_figures_and_formula_objects_pass(self):
         doc = _valid_article_document()
-        _add_article_paragraph(doc, "Таблица 1")
+        _add_table_caption_and_title(doc, 1)
         _add_table(doc)
         _add_small_picture(doc)
         _add_article_paragraph(doc, "Рисунок 1 Example figure")
@@ -402,12 +498,29 @@ class ValidatorGlobalRequirementsTest(unittest.TestCase):
     def test_table_violations_are_reported(self):
         doc = _valid_article_document()
         for number in (1, 2, 3):
-            _add_article_paragraph(doc, f"Таблица {number}")
+            _add_table_caption_and_title(doc, number)
             _add_table(doc)
 
         errors_ru, _ = Validator(_docx_bytes(doc, pages=4)).validate()
 
         self.assertIn("В статье должно быть не более 2 таблиц", errors_ru)
+
+    def test_table_formatting_violations_are_reported(self):
+        doc = _valid_article_document()
+        _add_article_paragraph(doc, "Таблица 1")
+        _add_article_paragraph(doc, "Заголовок таблицы")
+        table = doc.add_table(rows=1, cols=1)
+        paragraph = table.rows[0].cells[0].paragraphs[0]
+        paragraph.paragraph_format.line_spacing = 1.5
+        run = paragraph.add_run("1")
+        run.font.name = "Arial"
+        run.font.size = Pt(10)
+
+        errors_ru, _ = Validator(_docx_bytes(doc, pages=4)).validate()
+
+        self.assertIn("Номер таблицы должен быть выровнен по правому краю и набран курсивом", errors_ru)
+        self.assertIn("Заголовок таблицы должен быть выровнен по центру и выделен полужирным", errors_ru)
+        self.assertIn("В таблицах необходимо использовать шрифт Times New Roman", errors_ru)
 
     def test_figure_violations_are_reported(self):
         doc = _valid_article_document()
@@ -419,7 +532,7 @@ class ValidatorGlobalRequirementsTest(unittest.TestCase):
 
     def test_caption_sequence_and_plain_text_formula_violations_are_reported(self):
         doc = _valid_article_document()
-        _add_article_paragraph(doc, "Таблица 2")
+        _add_table_caption_and_title(doc, 2)
         _add_table(doc)
         _add_article_paragraph(doc, "E = mc2")
 
@@ -442,6 +555,27 @@ class ValidatorGlobalRequirementsTest(unittest.TestCase):
         self.assertIn("В тексте есть ссылки на источники, отсутствующие в списке", errors_ru)
         self.assertIn("В тексте должны быть ссылки на все источники из списка", errors_ru)
         self.assertIn("Список источников должен формироваться в порядке первого упоминания в тексте", errors_ru)
+
+    def test_reference_formatting_violations_are_reported(self):
+        doc = _valid_article_document()
+        first_reference = _reference_paragraphs(doc)[0]
+        first_reference.text = "[1] Source title 1. Moscow, Publisher, 2024, 10 p."
+        first_reference.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        first_reference.paragraph_format.left_indent = Cm(0)
+        first_reference.paragraph_format.first_line_indent = Cm(0)
+        first_reference.runs[0].font.name = "Times New Roman"
+        first_reference.runs[0].font.size = Pt(12)
+        first_reference.runs[0].bold = True
+
+        errors_ru, _ = Validator(_docx_bytes(doc, pages=4)).validate()
+
+        self.assertIn(
+            "Элементы списка источников должны начинаться с формата «[N] » и табуляции после пробела",
+            errors_ru,
+        )
+        self.assertIn("Элементы списка источников должны быть выровнены по левому краю или по ширине", errors_ru)
+        self.assertIn("Элементы списка источников должны иметь висячий отступ, равный левому отступу", errors_ru)
+        self.assertIn("Элементы списка источников не должны содержать полужирное начертание", errors_ru)
 
     def test_reference_count_and_numbering_violations_are_reported(self):
         doc = _valid_article_document()
