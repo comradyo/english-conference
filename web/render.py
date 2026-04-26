@@ -467,6 +467,64 @@ def render_precheck_section(
     """
 
 
+def render_precheck_script() -> str:
+    return """
+    <script>
+      (() => {
+        const bindPrecheckForm = () => {
+          const panel = document.querySelector("[data-precheck-panel]");
+          if (!panel) {
+            return;
+          }
+          const precheckForm = panel.querySelector("[data-precheck-form]");
+          const precheckSubmit = panel.querySelector("[data-precheck-submit]");
+          if (!precheckForm || !precheckSubmit || precheckForm.dataset.precheckBound === "true") {
+            return;
+          }
+          precheckForm.dataset.precheckBound = "true";
+          const defaultLabel = precheckSubmit.textContent;
+          const loadingLabel = precheckSubmit.dataset.loadingLabel || defaultLabel;
+
+          precheckForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            if (!precheckForm.reportValidity()) {
+              return;
+            }
+            precheckSubmit.disabled = true;
+            precheckSubmit.textContent = loadingLabel;
+            panel.setAttribute("aria-busy", "true");
+
+            try {
+              const response = await fetch(precheckForm.action, {
+                method: "POST",
+                body: new FormData(precheckForm),
+                headers: {
+                  "X-Requested-With": "fetch",
+                },
+              });
+              const html = await response.text();
+              const nextDocument = new DOMParser().parseFromString(html, "text/html");
+              const nextPanel = nextDocument.querySelector("[data-precheck-panel]");
+              if (!nextPanel) {
+                throw new Error("Missing precheck panel in response.");
+              }
+              panel.replaceWith(nextPanel);
+              bindPrecheckForm();
+            } catch (error) {
+              precheckSubmit.disabled = false;
+              precheckSubmit.textContent = defaultLabel;
+              panel.removeAttribute("aria-busy");
+              precheckForm.submit();
+            }
+          });
+        };
+
+        bindPrecheckForm();
+      })();
+    </script>
+    """
+
+
 def render_object_fields(record: dict[str, Any], *, lang: str = DEFAULT_LANGUAGE) -> str:
     rows: list[str] = []
     show_publication_status = publication_status_required(record)
@@ -787,6 +845,7 @@ def render_conference_form(
     body = f"""
     {success_modal}
     {precheck_section}
+    {render_precheck_script()}
     <section class="panel"><h2>{escape(text(lang, form_title_key))}</h2><p>{escape(text(lang, form_desc_key))}</p>
       <form id="conference-registration-form" method="post" action="{escape(form_action, quote=True)}" enctype="multipart/form-data">
         <div class="grid">
@@ -844,56 +903,6 @@ def render_conference_form(
             form.addEventListener("change", updateSubmitState);
             updateSubmitState();
           }}
-
-          const bindPrecheckForm = () => {{
-            const panel = document.querySelector("[data-precheck-panel]");
-            if (!panel) {{
-              return;
-            }}
-            const precheckForm = panel.querySelector("[data-precheck-form]");
-            const precheckSubmit = panel.querySelector("[data-precheck-submit]");
-            if (!precheckForm || !precheckSubmit || precheckForm.dataset.precheckBound === "true") {{
-              return;
-            }}
-            precheckForm.dataset.precheckBound = "true";
-            const defaultLabel = precheckSubmit.textContent;
-            const loadingLabel = precheckSubmit.dataset.loadingLabel || defaultLabel;
-
-            precheckForm.addEventListener("submit", async (event) => {{
-              event.preventDefault();
-              if (!precheckForm.reportValidity()) {{
-                return;
-              }}
-              precheckSubmit.disabled = true;
-              precheckSubmit.textContent = loadingLabel;
-              panel.setAttribute("aria-busy", "true");
-
-              try {{
-                const response = await fetch(precheckForm.action, {{
-                  method: "POST",
-                  body: new FormData(precheckForm),
-                  headers: {{
-                    "X-Requested-With": "fetch",
-                  }},
-                }});
-                const html = await response.text();
-                const nextDocument = new DOMParser().parseFromString(html, "text/html");
-                const nextPanel = nextDocument.querySelector("[data-precheck-panel]");
-                if (!nextPanel) {{
-                  throw new Error("Missing precheck panel in response.");
-                }}
-                panel.replaceWith(nextPanel);
-                bindPrecheckForm();
-              }} catch (error) {{
-                precheckSubmit.disabled = false;
-                precheckSubmit.textContent = defaultLabel;
-                panel.removeAttribute("aria-busy");
-                precheckForm.submit();
-              }}
-            }});
-          }};
-
-          bindPrecheckForm();
         }})();
       </script>
       <p class="form-note"><span class="required-mark">*</span> {escape(text(lang, "required_note"))}</p>
@@ -1279,6 +1288,10 @@ def render_admin_table(
     """
 
 
+def render_user_records_body(content_html: str, *, lang: str = DEFAULT_LANGUAGE) -> str:
+    return render_precheck_section(lang=lang) + render_precheck_script() + content_html
+
+
 def render_records_page(
     title: str,
     current_user: dict[str, Any],
@@ -1296,9 +1309,24 @@ def render_records_page(
         if admin_mode:
             body = render_admin_table(records, selected_registration_id=selected_registration_id, lang=lang)
         else:
-            body = f'<section class="cards">{"".join(render_record_card(record, admin_mode=admin_mode, application_deletion_enabled=application_deletion_enabled, lang=lang) for record in records)}</section>'
+            records_html = "".join(
+                render_record_card(
+                    record,
+                    admin_mode=admin_mode,
+                    application_deletion_enabled=application_deletion_enabled,
+                    lang=lang,
+                )
+                for record in records
+            )
+            body = render_user_records_body(f'<section class="cards">{records_html}</section>', lang=lang)
     else:
-        body = f'<div class="empty">{escape(empty_text)}{empty_action_html}</div>'
+        if admin_mode:
+            body = f'<div class="empty">{escape(empty_text)}{empty_action_html}</div>'
+        else:
+            body = render_user_records_body(
+                f'<div class="empty">{escape(empty_text)}{empty_action_html}</div>',
+                lang=lang,
+            )
     return layout(title, body, current_user=current_user, success=success, lang=lang)
 
 
