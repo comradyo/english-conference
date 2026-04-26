@@ -1189,9 +1189,9 @@ def render_admin_table(
     )
     return f"""
     <style>
-    .admin-layout {{ display:grid; grid-template-columns:minmax(0, 1fr) minmax(300px, 340px); gap:18px; align-items:start; }}
-    .admin-table-pane {{ min-width:0; }}
-    .admin-side-pane {{ position:sticky; top:24px; display:grid; gap:14px; }}
+    .admin-layout {{ display:grid; grid-template-columns:minmax(0, 1fr) minmax(300px, 340px); gap:18px; align-items:stretch; height:var(--admin-workspace-height, 62vh); min-height:0; }}
+    .admin-table-pane {{ min-width:0; min-height:0; overflow-y:auto; overscroll-behavior:contain; padding-right:2px; scrollbar-gutter:stable; }}
+    .admin-side-pane {{ min-height:0; overflow-y:auto; overscroll-behavior:contain; display:grid; align-content:start; gap:14px; padding-right:2px; scrollbar-gutter:stable; }}
     .admin-row {{ cursor:pointer; }}
     .admin-row.is-active {{ background:rgba(15,89,89,.08); }}
     .admin-row:focus-visible {{ outline:2px solid rgba(15,89,89,.35); outline-offset:-2px; }}
@@ -1200,7 +1200,8 @@ def render_admin_table(
     .admin-side-placeholder[hidden] {{ display:none; }}
     .row-action-hint {{ color:var(--accent); font-weight:700; white-space:nowrap; }}
     .file-stack {{ display:grid; gap:6px; }}
-    @media (max-width:980px) {{ .admin-layout {{ grid-template-columns:1fr; }} .admin-side-pane {{ position:static; }} }}
+    @media (max-width:980px) {{ .admin-layout {{ grid-template-columns:1fr; height:auto; }} .admin-table-pane {{ max-height:min(54vh, 560px); }} .admin-side-pane {{ max-height:min(72vh, 640px); }} }}
+    @media (max-width:560px) {{ .admin-table-pane {{ max-height:48vh; }} .admin-side-pane {{ max-height:68vh; }} }}
     </style>
     <section class="admin-layout">
       <div class="admin-table-pane">
@@ -1212,6 +1213,31 @@ def render_admin_table(
       </aside>
     </section>
     <script>
+    (() => {{
+      const layout = document.querySelector('.admin-layout');
+      if (!layout) {{
+        return;
+      }}
+      const desktopQuery = window.matchMedia('(min-width: 981px)');
+      const syncAdminWorkspaceHeight = () => {{
+        if (!desktopQuery.matches) {{
+          layout.style.removeProperty('--admin-workspace-height');
+          return;
+        }}
+        const footer = document.querySelector('.site-footer');
+        const top = layout.getBoundingClientRect().top;
+        const footerReserve = footer ? footer.offsetHeight + 34 : 24;
+        const availableHeight = window.innerHeight - top - footerReserve;
+        layout.style.setProperty('--admin-workspace-height', `${{Math.max(260, availableHeight)}}px`);
+      }};
+      syncAdminWorkspaceHeight();
+      window.addEventListener('load', syncAdminWorkspaceHeight);
+      window.addEventListener('resize', syncAdminWorkspaceHeight);
+      document.addEventListener('DOMContentLoaded', syncAdminWorkspaceHeight);
+      if (desktopQuery.addEventListener) {{
+        desktopQuery.addEventListener('change', syncAdminWorkspaceHeight);
+      }}
+    }})();
     (() => {{
       const rows = Array.from(document.querySelectorAll('.admin-row[data-admin-target]'));
       const panels = Array.from(document.querySelectorAll('[data-admin-card]'));
