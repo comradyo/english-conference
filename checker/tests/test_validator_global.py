@@ -168,8 +168,8 @@ def _add_reference_paragraph(doc: Document, number: int, text: str | None = None
     paragraph = doc.add_paragraph()
     paragraph.paragraph_format.line_spacing = 1.5
     paragraph.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-    paragraph.paragraph_format.left_indent = Cm(Validator.REQUIRED_PARAGRAPH_INDENT_CM)
-    paragraph.paragraph_format.first_line_indent = Cm(-Validator.REQUIRED_PARAGRAPH_INDENT_CM)
+    paragraph.paragraph_format.left_indent = Cm(1)
+    paragraph.paragraph_format.first_line_indent = Cm(-1)
 
     prefix_run = paragraph.add_run(f"[{number}] ")
     prefix_run.font.name = "Times New Roman"
@@ -253,6 +253,18 @@ def _main_text_paragraph(doc: Document):
 
 def _reference_paragraphs(doc: Document):
     return [paragraph for paragraph in doc.paragraphs if paragraph.text.startswith("[")]
+
+
+def _insert_main_text_paragraph_before_references(doc: Document, text: str):
+    for paragraph in doc.paragraphs:
+        if paragraph.text == "References":
+            inserted = paragraph.insert_paragraph_before()
+            inserted.paragraph_format.line_spacing = 1.5
+            run = inserted.add_run(text)
+            run.font.name = "Times New Roman"
+            run.font.size = Pt(12)
+            return inserted
+    raise AssertionError("References heading was not found")
 
 
 def _add_hyperlink(paragraph, text: str, url: str) -> None:
@@ -454,7 +466,7 @@ class ValidatorGlobalRequirementsTest(unittest.TestCase):
         doc.paragraphs[1].runs[0].bold = False
         doc.paragraphs[5].runs[0].italic = False
         doc.paragraphs[7].alignment = WD_ALIGN_PARAGRAPH.LEFT
-        _main_text_paragraph(doc).paragraph_format.first_line_indent = Cm(1)
+        _main_text_paragraph(doc).paragraph_format.first_line_indent = Cm(0.5)
         for paragraph in doc.paragraphs:
             if paragraph.text == "References":
                 paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -468,8 +480,24 @@ class ValidatorGlobalRequirementsTest(unittest.TestCase):
         )
         self.assertIn("Аффилиации должны быть набраны курсивом без полужирного начертания", errors_ru)
         self.assertIn("Аннотация должна быть выровнена по ширине", errors_ru)
-        self.assertIn("Абзацный отступ основного текста должен быть 0 или 1.25 см", errors_ru)
+        self.assertIn("Абзацный отступ основного текста должен быть 0, 1 см или 1.25 см", errors_ru)
         self.assertIn("Заголовок References должен быть выровнен по левому краю или по ширине", errors_ru)
+
+    def test_main_text_must_not_mix_one_and_one_twenty_five_cm_indents(self):
+        doc = _valid_article_document()
+        _main_text_paragraph(doc).paragraph_format.first_line_indent = Cm(1)
+        second_main_paragraph = _insert_main_text_paragraph_before_references(
+            doc,
+            "A second main-text paragraph keeps the same article body before references.",
+        )
+        second_main_paragraph.paragraph_format.first_line_indent = Cm(1.25)
+
+        errors_ru, _ = Validator(_docx_bytes(doc, pages=4)).validate()
+
+        self.assertIn(
+            "В документе нельзя одновременно использовать абзацные отступы 1 см и 1.25 см",
+            errors_ru,
+        )
 
     def test_tables_figures_and_formula_objects_pass(self):
         doc = _valid_article_document()

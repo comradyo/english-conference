@@ -49,7 +49,8 @@ class Validator:
     REQUIRED_FONT_NAME = "Times New Roman"
     REQUIRED_FONT_SIZE_PT = 12.0
     REQUIRED_LINE_SPACING = 1.5
-    REQUIRED_PARAGRAPH_INDENT_CM = 1.25
+    ALLOWED_PARAGRAPH_INDENTS_CM = (0.0, 1.0, 1.25)
+    EXCLUSIVE_PARAGRAPH_INDENTS_CM = (1.0, 1.25)
     MIN_PAGE_COUNT = 4
     MAX_PAGE_COUNT = 6
     MIN_CHARACTERS_WITH_SPACES = 6000
@@ -1057,9 +1058,16 @@ class Validator:
         return any(cls._run_is_italic(run, paragraph) for run, *_ in cls._visible_run_spans(paragraph))
 
     @classmethod
-    def _paragraph_has_allowed_main_indent(cls, paragraph) -> bool:
+    def _paragraph_indent_bucket(cls, paragraph) -> float | None:
         indent_cm = cls._effective_first_line_indent_cm(paragraph)
-        return cls._cm_matches(indent_cm, 0.0) or cls._cm_matches(indent_cm, cls.REQUIRED_PARAGRAPH_INDENT_CM)
+        for allowed_indent in cls.ALLOWED_PARAGRAPH_INDENTS_CM:
+            if cls._cm_matches(indent_cm, allowed_indent):
+                return allowed_indent
+        return None
+
+    @classmethod
+    def _paragraph_has_allowed_main_indent(cls, paragraph) -> bool:
+        return cls._paragraph_indent_bucket(paragraph) is not None
 
     @classmethod
     def _paragraph_has_reference_hanging_indent(cls, paragraph) -> bool:
@@ -1467,6 +1475,7 @@ class Validator:
             return
         end = structure.sources_pos
         skip_numbers = self._table_title_paragraph_numbers(structure)
+        non_zero_indent_values = set()
 
         for item in structure.items[structure.main_text_pos:end]:
             if item.number in skip_numbers:
@@ -1482,9 +1491,20 @@ class Validator:
                 )
             if not self._paragraph_has_allowed_main_indent(item.paragraph):
                 self._add_error(
-                    f"Абзацный отступ основного текста должен быть 0 или {self.REQUIRED_PARAGRAPH_INDENT_CM:g} см",
-                    f"The first-line indent in main text must be 0 or {self.REQUIRED_PARAGRAPH_INDENT_CM:g} cm",
+                    "Абзацный отступ основного текста должен быть 0, 1 см или 1.25 см",
+                    "The first-line indent in main text must be 0, 1 cm, or 1.25 cm",
                 )
+                continue
+
+            indent_value = self._paragraph_indent_bucket(item.paragraph)
+            if indent_value in self.EXCLUSIVE_PARAGRAPH_INDENTS_CM:
+                non_zero_indent_values.add(indent_value)
+
+        if len(non_zero_indent_values) > 1:
+            self._add_error(
+                "В документе нельзя одновременно использовать абзацные отступы 1 см и 1.25 см",
+                "The document must not mix 1 cm and 1.25 cm first-line indents",
+            )
 
     def _table_title_paragraph_numbers(self, structure: ArticleStructure) -> set[int]:
         title_numbers = set()
