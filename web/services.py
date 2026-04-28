@@ -66,7 +66,7 @@ def validation_message(exc: ValidationError, fallback: str, *, lang: str = DEFAU
     return fallback
 
 
-def validate_docx(
+def validate_file_extension(
     upload: UploadFile | None,
     *,
     required: bool = True,
@@ -103,7 +103,7 @@ async def read_upload_file(
     allowed_extensions: tuple[str, ...] = (".docx",),
     max_size_bytes: int = MAX_FILE_SIZE_BYTES,
 ) -> bytes | None:
-    if not validate_docx(
+    if not validate_file_extension(
         upload,
         required=required,
         field_label=field_label,
