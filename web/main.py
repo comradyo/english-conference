@@ -9,7 +9,7 @@ from urllib.parse import quote
 
 from bson.binary import Binary
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 from pymongo.errors import DuplicateKeyError
@@ -1427,11 +1427,6 @@ async def export_admin_statistics_zip(request: Request):
     if response:
         return with_language(request, response)
 
-    records = await request.app.state.registrations_collection.find(
-        {},
-        {"publication_file": 1, "expert_opinion_file": 1, "review_file": 1, "last_name": 1, "first_name": 1, "middle_name": 1},
-    ).sort("created_at", -1).to_list(length=None)
-
     def _sanitize_part(name: str) -> str:
         # Replace path separators and control chars
         if not name:
@@ -1450,11 +1445,17 @@ async def export_admin_statistics_zip(request: Request):
         name = " ".join(parts)
         return _sanitize_part(name)
 
+    # Use a cursor and iterate in batches to avoid loading all documents into memory at once.
+    cursor = request.app.state.registrations_collection.find(
+        {},
+        {"publication_file": 1, "expert_opinion_file": 1, "review_file": 1, "last_name": 1, "first_name": 1, "middle_name": 1},
+    ).sort("created_at", -1).batch_size(50)
+
     zip_buffer = BytesIO()
     with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
         # Track names in folder to avoid overwriting
         folder_contents: dict[str, set[str]] = {}
-        for rec in records:
+        async for rec in cursor:
             folder = _folder_name_for(rec)
             # if duplicate folder name among records, we accept merging into same folder; ensure unique filenames inside
             folder_contents.setdefault(folder, set())
@@ -1486,14 +1487,22 @@ async def export_admin_statistics_zip(request: Request):
                 folder_contents[folder].add(arc_name)
                 # write bytes
                 try:
-                    zf.writestr(arc_name, bytes(rec_field.get("data")))
+                    zf.writestr(arc_name, bytes(file_data))
                 except Exception:
                     # skip problematic file
                     continue
 
     zip_buffer.seek(0)
+
+    def _iter_zip_chunks(buf: BytesIO, chunk_size: int = 65536):
+        while True:
+            chunk = buf.read(chunk_size)
+            if not chunk:
+                break
+            yield chunk
+
     headers = {"Content-Disposition": "attachment; filename*=UTF-8''applications.zip"}
-    return Response(content=zip_buffer.read(), media_type="application/zip", headers=headers)
+    return StreamingResponse(_iter_zip_chunks(zip_buffer), media_type="application/zip", headers=headers)
 
 
 @app.get("/admin/maintenance", include_in_schema=False)
