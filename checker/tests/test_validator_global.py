@@ -486,6 +486,28 @@ class ValidatorGlobalRequirementsTest(unittest.TestCase):
         self.assertIn("Ключевые слова не должны заканчиваться точкой", errors_ru)
         self.assertIn("Ключевые слова на английском языке не должны заканчиваться точкой", errors_ru)
 
+    def test_semicolon_keywords_do_not_cascade_to_count_or_phrase_errors_when_items_are_valid(self):
+        doc = _valid_article_document()
+        doc.paragraphs[8].runs[-1].text = (
+            " сельское хозяйство; агропромышленный комплекс; техника; экономическая оценка; "
+            "экономический эффект; эффективность; стандарт."
+        )
+        doc.paragraphs[16].runs[-1].text = (
+            " agriculture; agro-industrial complex; machinery; economic evaluation; "
+            "economic effect; efficiency; standard."
+        )
+
+        errors_ru, _ = Validator(_docx_bytes(doc, pages=4)).validate()
+
+        self.assertIn("Ключевые слова должны разделяться запятыми", errors_ru)
+        self.assertIn("Ключевые слова на английском языке должны разделяться запятыми", errors_ru)
+        self.assertIn("Ключевые слова не должны заканчиваться точкой", errors_ru)
+        self.assertIn("Ключевые слова на английском языке не должны заканчиваться точкой", errors_ru)
+        self.assertNotIn("Ключевых слов должно быть от 5 до 7", errors_ru)
+        self.assertNotIn("Ключевые фразы не должны быть длиннее четырех слов", errors_ru)
+        self.assertNotIn("Ключевых слов на английском языке должно быть от 5 до 7", errors_ru)
+        self.assertNotIn("Ключевые фразы на английском языке не должны быть длиннее четырех слов", errors_ru)
+
     def test_structural_formatting_violations_are_reported(self):
         doc = _valid_article_document()
         doc.paragraphs[1].runs[0].bold = False

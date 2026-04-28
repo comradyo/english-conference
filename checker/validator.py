@@ -1781,7 +1781,7 @@ class Validator:
         if keywords_text.endswith("."):
             self._add_error(period_message_ru, period_message_en)
 
-        keywords = [keyword.strip() for keyword in keywords_text.split(",") if keyword.strip()]
+        keywords = [keyword.strip() for keyword in re.split(r"[,;]", keywords_text) if keyword.strip()]
         if not (5 <= len(keywords) <= 7):
             self._add_error(count_message_ru, count_message_en)
 
