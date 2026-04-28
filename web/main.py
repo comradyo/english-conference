@@ -1419,8 +1419,7 @@ async def export_admin_statistics(request: Request):
 @app.get("/admin/statistics/export.zip", include_in_schema=False)
 async def export_admin_statistics_zip(request: Request):
     """Собирает zip-архив с файлами из заявок. В корне архива — папки с ФИО, в каждой папке — файлы: публикация, экспертное заключение, рецензия (если есть)."""
-    from io import BytesIO
-    import zipfile
+    import zipstream
 
     lang = request_language(request)
     _current_user, response = await require_admin(request, lambda user: render_forbidden(user, lang=lang))
@@ -1451,8 +1450,8 @@ async def export_admin_statistics_zip(request: Request):
         {"publication_file": 1, "expert_opinion_file": 1, "review_file": 1, "last_name": 1, "first_name": 1, "middle_name": 1},
     ).sort("created_at", -1).batch_size(50)
 
-    zip_buffer = BytesIO()
-    with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+    async def _stream_zip():
+        zs = zipstream.ZipStream(compress_type=zipstream.ZIP_DEFLATED)
         # Track names in folder to avoid overwriting
         folder_contents: dict[str, set[str]] = {}
         async for rec in cursor:
@@ -1485,24 +1484,16 @@ async def export_admin_statistics_zip(request: Request):
                             break
                         i += 1
                 folder_contents[folder].add(arc_name)
-                # write bytes
                 try:
-                    zf.writestr(arc_name, bytes(file_data))
+                    zs.add(file_data, arc_name)
                 except Exception:
                     # skip problematic file
                     continue
-
-    zip_buffer.seek(0)
-
-    def _iter_zip_chunks(buf: BytesIO, chunk_size: int = 65536):
-        while True:
-            chunk = buf.read(chunk_size)
-            if not chunk:
-                break
+        for chunk in zs:
             yield chunk
 
     headers = {"Content-Disposition": "attachment; filename*=UTF-8''applications.zip"}
-    return StreamingResponse(_iter_zip_chunks(zip_buffer), media_type="application/zip", headers=headers)
+    return StreamingResponse(_stream_zip(), media_type="application/zip", headers=headers)
 
 
 @app.get("/admin/maintenance", include_in_schema=False)
