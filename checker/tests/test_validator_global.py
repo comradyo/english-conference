@@ -163,6 +163,32 @@ def _add_table(doc: Document) -> None:
         run.font.size = Pt(12)
 
 
+def _add_formula_layout_table(doc: Document) -> None:
+    table = doc.add_table(rows=1, cols=2)
+    formula_paragraph = table.rows[0].cells[0].paragraphs[0]
+    formula_run = formula_paragraph.add_run("x")
+    formula_run.font.name = "Cambria Math"
+    formula_run.font.size = Pt(10)
+    formula_run._element.append(
+        parse_xml(
+            '<m:oMath xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math">'
+            "<m:r><m:t>x</m:t></m:r>"
+            "</m:oMath>"
+        )
+    )
+
+    number_paragraph = table.rows[0].cells[1].paragraphs[0]
+    number_run = number_paragraph.add_run("(1)")
+    number_run.font.name = "Cambria Math"
+    number_run.font.size = Pt(10)
+
+
+def _add_table_with_picture(doc: Document) -> None:
+    table = doc.add_table(rows=1, cols=1)
+    run = table.rows[0].cells[0].paragraphs[0].add_run()
+    run.add_picture(io.BytesIO(PNG_1X1), width=Cm(1))
+
+
 def _add_table_caption_and_title(doc: Document, number: int, title: str = "Заголовок таблицы") -> None:
     _add_article_paragraph(doc, f"Таблица {number}", italic=True, alignment=WD_ALIGN_PARAGRAPH.RIGHT)
     _add_article_paragraph(doc, title, bold=True, alignment=WD_ALIGN_PARAGRAPH.CENTER)
@@ -430,6 +456,54 @@ class ValidatorGlobalRequirementsTest(unittest.TestCase):
         self.assertEqual([], errors_ru)
         self.assertEqual([], errors_en)
 
+    def test_error_lists_remain_aligned_when_translations_repeat(self):
+        validator = Validator(_valid_article_docx_bytes())
+
+        validator._add_error("Первая ошибка", "Repeated error")
+        validator._add_error("Вторая ошибка", "Repeated error")
+
+        self.assertEqual(2, len(validator.errors))
+        self.assertEqual(2, len(validator.errors_eng))
+
+    def test_udk_with_colon_is_not_used_as_article_title(self):
+        doc = _valid_article_document()
+        doc.paragraphs[0].text = "УДК: 520.607"
+
+        _, errors_en = Validator(_docx_bytes(doc, pages=4)).validate()
+
+        self.assertIn("UDC must be specified in the format 'UDC 520.607'", errors_en)
+        self.assertNotIn("The article title must contain from 6 to 15 words", errors_en)
+
+    def test_title_detection_skips_author_lines_before_title(self):
+        doc = _valid_article_document()
+        paragraph = doc.paragraphs[1].insert_paragraph_before()
+        paragraph.paragraph_format.line_spacing = 1.5
+        run = paragraph.add_run("Иванов Иван Иванович")
+        run.font.name = "Times New Roman"
+        run.font.size = Pt(12)
+
+        content = _docx_bytes(doc, pages=4)
+        validator = Validator(content)
+        structure = validator._build_article_structure()
+
+        self.assertEqual(doc.paragraphs[2].text, structure.items[structure.ru_title_pos].text)
+
+        _, errors_en = Validator(content).validate()
+
+        self.assertIn("Author information must be placed after the article title", errors_en)
+        self.assertNotIn("Author information was not found", errors_en)
+
+    def test_missing_english_keywords_do_not_trigger_reference_citation_cascade(self):
+        doc = _valid_article_document()
+        doc.paragraphs[16].clear()
+
+        _, errors_en = Validator(_docx_bytes(doc, pages=4)).validate()
+
+        self.assertIn("English keywords were not found", errors_en)
+        self.assertIn("The main article text was not found", errors_en)
+        self.assertNotIn("The article text must cite the listed references", errors_en)
+        self.assertNotIn("The text must cite every source from the reference list", errors_en)
+
     def test_article_structure_requires_main_text(self):
         doc = _valid_article_document()
         for paragraph in doc.paragraphs:
@@ -569,6 +643,37 @@ class ValidatorGlobalRequirementsTest(unittest.TestCase):
 
         self.assertEqual([], errors_ru)
         self.assertEqual([], errors_en)
+
+    def test_formula_layout_tables_do_not_count_as_article_tables(self):
+        doc = _valid_article_document()
+        _add_formula_layout_table(doc)
+        _add_formula_layout_table(doc)
+        _add_table_caption_and_title(doc, 1)
+        _add_table(doc)
+
+        _, errors_en = Validator(_docx_bytes(doc, pages=4)).validate()
+
+        self.assertNotIn(
+            "The Times New Roman font should be used in the article text, except for mathematical formulas",
+            errors_en,
+        )
+        self.assertNotIn("The font size must be 12", errors_en)
+        self.assertNotIn("The line spacing must be 1.5", errors_en)
+        self.assertNotIn("The article must contain no more than 2 tables", errors_en)
+        self.assertNotIn("All tables must have numbered captions", errors_en)
+        self.assertNotIn("The font size in tables must be 12", errors_en)
+
+    def test_drawings_inside_tables_do_not_count_as_figures(self):
+        doc = _valid_article_document()
+        _add_table_caption_and_title(doc, 1)
+        _add_table_with_picture(doc)
+
+        _, errors_en = Validator(_docx_bytes(doc, pages=4)).validate()
+
+        self.assertNotIn("All figures must have captions", errors_en)
+
+    def test_dimension_multiplication_text_is_not_treated_as_formula(self):
+        self.assertFalse(Validator._looks_like_plain_text_formula("Input: 15 samples × 3 channels."))
 
     def test_table_violations_are_reported(self):
         doc = _valid_article_document()

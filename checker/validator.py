@@ -60,6 +60,7 @@ class Validator:
     PT_TOLERANCE = 0.1
 
     EMAIL_PATTERN = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+    LOOSE_UDK_PATTERN = re.compile(r"^\s*(?:УДК|UDC)\b", re.IGNORECASE)
     UDK_PATTERN = re.compile(r"^\s*УДК\s+(?P<code>\S.+)$", re.IGNORECASE)
     RU_ABSTRACT_PATTERN = re.compile(r"^\s*Аннотация\s*[.:]\s*(?P<body>.+)$", re.IGNORECASE)
     EN_ABSTRACT_PATTERN = re.compile(r"^\s*Abstract\s*[.:]\s*(?P<body>.+)$", re.IGNORECASE)
@@ -81,8 +82,24 @@ class Validator:
     RU_NAME_WORD_PATTERN = re.compile(r"[А-ЯЁ][А-Яа-яЁё-]+")
     EN_NAME_WORD_PATTERN = re.compile(r"[A-Z][A-Za-z'-]+")
     ABBREVIATION_PATTERN = re.compile(r"\b[A-ZА-ЯЁ]{2,}\b")
-    PLAIN_TEXT_FORMULA_PATTERN = re.compile(r"[A-Za-zА-Яа-яЁё0-9)\]]\s*(?:=|≈|≠|≤|≥|<|>|±|∑|√|×|÷)\s*[\w([{]")
+    PLAIN_TEXT_FORMULA_PATTERN = re.compile(r"[A-Za-zА-Яа-яЁё0-9)\]]\s*(?:=|≈|≠|≤|≥|<|>|±|∑|√)\s*[\w([{]")
     CAPTION_PREFIXES = ("рис.", "рисунок", "fig.", "figure", "table", "табл.")
+    FORMULA_TABLE_NUMBER_PATTERN = re.compile(r"^\(?\d+[A-Za-zА-Яа-яЁё]?\)?$")
+    AFFILIATION_HINTS = (
+        "университет",
+        "институт",
+        "кафедр",
+        "мгту",
+        "москва",
+        "россия",
+        "university",
+        "institute",
+        "department",
+        "faculty",
+        "moscow",
+        "russia",
+        "bmstu",
+    )
     TITLE_SCAN_LIMIT = 15
     EMAIL_LINK_LABELS = {"email", "e-mail", "e mail"}
 
@@ -94,6 +111,7 @@ class Validator:
         self.app_properties = self._read_app_properties()
         self.errors = []
         self.errors_eng = []
+        self._error_pairs = set()
 
     def validate(self):
         self.validate_global_requirements()
@@ -126,6 +144,11 @@ class Validator:
             self._add_error("Заголовок статьи не найден", "The article title was not found")
         if not self._ru_author_items(structure):
             self._add_error("Сведения об авторах не найдены", "Author information was not found")
+        if self._has_metadata_before_title(structure, "ru"):
+            self._add_error(
+                "Сведения об авторах должны располагаться после заголовка статьи",
+                "Author information must be placed after the article title",
+            )
         if structure.ru_abstract_pos is None:
             self._add_error("Аннотация не найдена", "The abstract was not found")
         if structure.ru_keywords_pos is None:
@@ -139,6 +162,11 @@ class Validator:
             self._add_error(
                 "Сведения об авторах на английском языке не найдены",
                 "English author information was not found",
+            )
+        if self._has_metadata_before_title(structure, "en"):
+            self._add_error(
+                "Сведения об авторах на английском языке должны располагаться после заголовка статьи на английском языке",
+                "English author information must be placed after the English article title",
             )
         if structure.en_abstract_pos is None:
             self._add_error(
@@ -282,10 +310,12 @@ class Validator:
         return False
 
     def _add_error(self, message_ru: str, message_en: str) -> None:
-        if message_ru not in self.errors:
-            self.errors.append(message_ru)
-        if message_en not in self.errors_eng:
-            self.errors_eng.append(message_en)
+        pair = (message_ru, message_en)
+        if pair in self._error_pairs:
+            return
+        self._error_pairs.add(pair)
+        self.errors.append(message_ru)
+        self.errors_eng.append(message_en)
 
     def _paragraph_items(self) -> list[ParagraphItem]:
         return [
@@ -314,7 +344,7 @@ class Validator:
 
     def _build_article_structure(self) -> ArticleStructure:
         items = self._paragraph_items()
-        udk_pos = self._find_position(items, lambda item: self.UDK_PATTERN.match(item.text) is not None)
+        udk_pos = self._find_position(items, lambda item: self._is_udk_line(item.text))
         ru_abstract_pos = self._find_position(
             items,
             lambda item: self.RU_ABSTRACT_PATTERN.match(item.text) is not None,
@@ -341,9 +371,13 @@ class Validator:
             self._next_position(en_keywords_pos),
         )
 
-        ru_title_pos = self._first_content_position(items, self._next_position(udk_pos), ru_abstract_pos)
-        en_title_pos = self._first_content_position(items, self._next_position(ru_keywords_pos), en_abstract_pos)
-        main_text_pos = self._first_content_position(items, self._next_position(en_keywords_pos), sources_pos)
+        ru_title_pos = self._title_position(items, self._next_position(udk_pos), ru_abstract_pos, "ru")
+        en_title_pos = self._title_position(items, self._next_position(ru_keywords_pos), en_abstract_pos, "en")
+        main_text_pos = (
+            None
+            if en_keywords_pos is None
+            else self._first_content_position(items, self._next_position(en_keywords_pos), sources_pos)
+        )
 
         return ArticleStructure(
             items=items,
@@ -361,10 +395,66 @@ class Validator:
     def _first_content_position(self, items: list[ParagraphItem], start: int, end: int | None) -> int | None:
         return self._find_position(
             items,
-            lambda item: not self._is_spin_line(item.text) and not self._is_affiliation_line(item.text),
+            lambda item: (
+                not self._is_udk_line(item.text)
+                and not self._is_spin_line(item.text)
+                and not self._is_affiliation_line(item.text)
+            ),
             start,
             end,
         )
+
+    def _title_position(self, items: list[ParagraphItem], start: int, end: int | None, lang: str) -> int | None:
+        upper_bound = len(items) if end is None else min(end, len(items))
+        content_positions = [
+            position
+            for position in range(max(start, 0), upper_bound)
+            if (
+                not self._is_udk_line(items[position].text)
+                and not self._is_spin_line(items[position].text)
+                and not self._is_affiliation_line(items[position].text)
+            )
+        ]
+        if not content_positions:
+            return None
+
+        first_position = content_positions[0]
+        if not self._looks_like_metadata_before_title(items[first_position], lang):
+            return first_position
+
+        for position in content_positions[1:self.TITLE_SCAN_LIMIT + 1]:
+            if self._is_title_candidate(items[position], lang):
+                return position
+        return first_position
+
+    @classmethod
+    def _is_udk_line(cls, text: str) -> bool:
+        return cls.LOOSE_UDK_PATTERN.match(text) is not None
+
+    @classmethod
+    def _looks_like_metadata_before_title(cls, item: ParagraphItem, lang: str) -> bool:
+        text = item.text
+        if cls.EMAIL_PATTERN.search(text) or cls._looks_like_affiliation_metadata(text):
+            return True
+
+        word_count = cls._word_count(text)
+        has_author_marker = bool(re.search(r"[\d,;/]", text))
+        if re.search(r"(?:[А-ЯЁ]\.\s*){1,2}[А-ЯЁ][А-Яа-яЁё-]+", text):
+            return True
+        if cls._is_ru_author_line(item) or cls._is_en_author_line(item):
+            return word_count <= 4 or (word_count <= 8 and has_author_marker)
+        return False
+
+    @classmethod
+    def _looks_like_affiliation_metadata(cls, text: str) -> bool:
+        normalized = cls._normalize_text(text).lower()
+        return any(hint in normalized for hint in cls.AFFILIATION_HINTS)
+
+    @classmethod
+    def _is_title_candidate(cls, item: ParagraphItem, lang: str) -> bool:
+        if cls._looks_like_metadata_before_title(item, lang):
+            return False
+        return cls._word_count(item.text) >= 5
 
     @classmethod
     def _slice_items(
@@ -374,12 +464,54 @@ class Validator:
             end_pos: int | None,
     ) -> list[ParagraphItem]:
         if start_pos is None:
+            start_pos = title_pos
+        if start_pos is None:
             return []
         start = start_pos + 1
         end = len(structure.items) if end_pos is None else end_pos
         if start >= end:
             return []
         return structure.items[start:end]
+
+    def _metadata_items(self, structure: ArticleStructure, lang: str) -> list[ParagraphItem]:
+        if lang == "ru":
+            start_pos = structure.udk_pos
+            title_pos = structure.ru_title_pos
+            end_pos = structure.ru_abstract_pos
+        else:
+            start_pos = structure.ru_keywords_pos
+            title_pos = structure.en_title_pos
+            end_pos = structure.en_abstract_pos
+
+        if start_pos is None:
+            return []
+
+        end = len(structure.items) if end_pos is None else end_pos
+        return [
+            item
+            for position, item in enumerate(structure.items[self._next_position(start_pos):end], self._next_position(start_pos))
+            if position != title_pos
+        ]
+
+    def _metadata_items_before_title(self, structure: ArticleStructure, lang: str) -> list[ParagraphItem]:
+        if lang == "ru":
+            start_pos = structure.udk_pos
+            title_pos = structure.ru_title_pos
+        else:
+            start_pos = structure.ru_keywords_pos
+            title_pos = structure.en_title_pos
+
+        if start_pos is None or title_pos is None or self._next_position(start_pos) >= title_pos:
+            return []
+        return structure.items[self._next_position(start_pos):title_pos]
+
+    def _has_metadata_before_title(self, structure: ArticleStructure, lang: str) -> bool:
+        return any(
+            self._is_spin_line(item.text)
+            or self._is_affiliation_line(item.text)
+            or self._looks_like_metadata_before_title(item, lang)
+            for item in self._metadata_items_before_title(structure, lang)
+        )
 
     @classmethod
     def _is_spin_line(cls, text: str) -> bool:
@@ -416,28 +548,28 @@ class Validator:
     def _ru_author_items(self, structure: ArticleStructure) -> list[ParagraphItem]:
         return [
             item
-            for item in self._slice_items(structure, structure.ru_title_pos, structure.ru_abstract_pos)
+            for item in self._metadata_items(structure, "ru")
             if self._is_ru_author_line(item)
         ]
 
     def _en_author_items(self, structure: ArticleStructure) -> list[ParagraphItem]:
         return [
             item
-            for item in self._slice_items(structure, structure.en_title_pos, structure.en_abstract_pos)
+            for item in self._metadata_items(structure, "en")
             if self._is_en_author_line(item)
         ]
 
     def _ru_affiliation_items(self, structure: ArticleStructure) -> list[ParagraphItem]:
         return [
             item
-            for item in self._slice_items(structure, structure.ru_title_pos, structure.ru_abstract_pos)
+            for item in self._metadata_items(structure, "ru")
             if self._is_affiliation_line(item.text)
         ]
 
     def _en_affiliation_items(self, structure: ArticleStructure) -> list[ParagraphItem]:
         return [
             item
-            for item in self._slice_items(structure, structure.en_title_pos, structure.en_abstract_pos)
+            for item in self._metadata_items(structure, "en")
             if self._is_affiliation_line(item.text)
         ]
 
@@ -478,11 +610,12 @@ class Validator:
 
     def _drawing_count(self) -> int:
         try:
-            drawings = self.doc.element.xpath(".//*[local-name()='drawing']")
-            picts = self.doc.element.xpath(".//*[local-name()='pict']")
+            count = 0
+            for paragraph in self.doc.paragraphs:
+                count += len(paragraph._p.xpath(".//*[local-name()='drawing' or local-name()='pict']"))
         except Exception:
             return 0
-        return len(drawings) + len(picts)
+        return count
 
     def _caption_items(self, pattern) -> list[ParagraphItem]:
         items = []
@@ -540,6 +673,7 @@ class Validator:
 
     def _top_level_blocks(self):
         paragraph_by_element_id = {id(paragraph._p): paragraph for paragraph in self.doc.paragraphs}
+        table_by_element_id = {id(table._tbl): table for table in self.doc.tables}
         for child in self.doc.element.body.iterchildren():
             name = self._local_name(child.tag)
             if name == "p":
@@ -547,7 +681,9 @@ class Validator:
                 if paragraph is not None:
                     yield "paragraph", paragraph
             elif name == "tbl":
-                yield "table", child
+                table = table_by_element_id.get(id(child))
+                if table is not None:
+                    yield "table", table
 
     @classmethod
     def _previous_non_empty_paragraphs(cls, blocks: list[tuple[str, Any]], table_index: int, count: int):
@@ -567,11 +703,48 @@ class Validator:
         for index, (block_type, _) in enumerate(blocks):
             if block_type != "table":
                 continue
+            if self._is_formula_layout_table(blocks[index][1]):
+                continue
             previous_paragraphs = self._previous_non_empty_paragraphs(blocks, index, 2)
             number_paragraph = previous_paragraphs[0] if len(previous_paragraphs) == 2 else None
             title_paragraph = previous_paragraphs[1] if len(previous_paragraphs) == 2 else None
             pairs.append((number_paragraph, title_paragraph))
         return pairs
+
+    @classmethod
+    def _table_contains_formula(cls, table) -> bool:
+        try:
+            return bool(table._tbl.xpath(".//*[local-name()='oMath' or local-name()='oMathPara']"))
+        except Exception:
+            return False
+
+    @classmethod
+    def _is_formula_table_number_cell(cls, text: str) -> bool:
+        return cls.FORMULA_TABLE_NUMBER_PATTERN.match(cls._normalize_text(text)) is not None
+
+    @classmethod
+    def _is_formula_layout_table(cls, table) -> bool:
+        try:
+            row_count = len(table.rows)
+            column_count = len(table.columns)
+        except Exception:
+            return False
+
+        if row_count != 1 or column_count not in (2, 3):
+            return False
+
+        cell_texts = [cls._normalize_text(cell.text) for cell in table.rows[0].cells]
+        if not any(cls._is_formula_table_number_cell(text) for text in cell_texts):
+            return False
+
+        non_number_texts = [text for text in cell_texts if not cls._is_formula_table_number_cell(text)]
+        non_number_text = " ".join(text for text in non_number_texts if text)
+        if len(non_number_text) > 160:
+            return False
+
+        return cls._table_contains_formula(table) or any(
+            cls._looks_like_plain_text_formula(text) for text in non_number_texts
+        )
 
     @classmethod
     def _looks_like_plain_text_formula(cls, text: str) -> bool:
@@ -734,6 +907,8 @@ class Validator:
     def _iter_all_paragraphs(self) -> Iterable:
         yield from self.doc.paragraphs
         for table in self.doc.tables:
+            if self._is_formula_layout_table(table):
+                continue
             yield from self._iter_table_paragraphs(table)
 
     @classmethod
@@ -1797,7 +1972,7 @@ class Validator:
 
     # Таблицы
     def check_tables(self):
-        tables = list(self._iter_all_tables())
+        tables = [table for table in self._iter_all_tables() if not self._is_formula_layout_table(table)]
         table_count = len(tables)
         table_caption_numbers = self._caption_numbers(self.TABLE_CAPTION_PATTERN)
 
@@ -1955,6 +2130,9 @@ class Validator:
                 "Источники в списке должны быть пронумерованы последовательно, начиная с [1]",
                 "References must be numbered sequentially starting from [1]",
             )
+
+        if self.structure.main_text_pos is None:
+            return
 
         cited_numbers = []
         for item in self._main_text_reference_items(self.structure):
