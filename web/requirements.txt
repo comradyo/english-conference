@@ -4,3 +4,5 @@ motor==3.7.1
 httpx==0.28.1
 pydantic[email]==2.12.5
 python-multipart==0.0.22
+openpyxl==3.1.5
+zipstream-ng==1.9.0

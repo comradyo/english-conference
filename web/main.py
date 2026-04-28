@@ -9,12 +9,13 @@ from urllib.parse import quote
 
 from bson.binary import Binary
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 from pymongo.errors import DuplicateKeyError
 
 from i18n import field_label, notice_text, text
+from excel_export import build_applications_xlsx
 from models import (
     AccountLoginPayload,
     AccountRegistrationPayload,
@@ -30,7 +31,8 @@ from models import (
 )
 from render import (
     layout,
-    render_admin_publication_recheck_page,
+    render_admin_maintenance_page,
+    render_admin_statistics_page,
     render_auth_page,
     render_conference_form,
     render_forbidden,
@@ -49,15 +51,18 @@ from services import (
     create_session,
     is_admin_email,
     localized_redirect,
+    load_maintenance_settings,
     load_current_user,
     normalize_email,
     now_utc,
     parse_object_id,
     request_language,
     read_docx,
+    read_upload_file,
     remove_current_session,
     require_admin,
     require_user,
+    save_maintenance_settings,
     set_session_cookie,
     validation_message,
 )
@@ -88,6 +93,8 @@ app = FastAPI(title="Conference Personal Cabinet", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 PENDING_PARTICIPATION_STATUS = PARTICIPATION_STATUSES[0]
+SUPPORTING_DOCUMENT_EXTENSIONS = (".docx", ".pdf")
+SUPPORTING_DOCUMENT_MAX_SIZE_BYTES = 20 * 1024 * 1024
 
 
 def with_language(request: Request, response):
@@ -780,6 +787,17 @@ async def conference_registration_page(request: Request):
     current_user, response = await require_user(request)
     if response:
         return response
+    maintenance_settings = await load_maintenance_settings(request)
+    if not maintenance_settings["application_creation_enabled"]:
+        return with_language(
+            request,
+            layout(
+                text(lang, "conference_title"),
+                f'<div class="empty">{escape(text(lang, "application_creation_disabled_body"))}</div>',
+                current_user=current_user,
+                lang=lang,
+            ),
+        )
     return with_language(request, render_conference_form(current_user, lang=lang))
 
 
@@ -878,6 +896,16 @@ async def submit_conference_registration(
     current_user, response = await require_user(request)
     if response:
         return response
+    maintenance_settings = await load_maintenance_settings(request)
+    if not maintenance_settings["application_creation_enabled"]:
+        result = render_conference_form(
+            current_user,
+            error=text(lang, "application_creation_disabled_body"),
+            values={"email": current_user["email"]},
+            lang=lang,
+        )
+        result.status_code = 403
+        return with_language(request, result)
 
     middle_name_value = optional_form_value(middle_name)
     department_value = optional_form_value(department)
@@ -923,17 +951,21 @@ async def submit_conference_registration(
                 field_label=field_label(lang, "publication_file"),
                 lang=lang,
             )
-        expert_opinion_content = await read_docx(
+        expert_opinion_content = await read_upload_file(
             expert_opinion_file,
             required=False,
             field_label=field_label(lang, "expert_opinion_file"),
             lang=lang,
+            allowed_extensions=SUPPORTING_DOCUMENT_EXTENSIONS,
+            max_size_bytes=SUPPORTING_DOCUMENT_MAX_SIZE_BYTES,
         )
-        review_file_content = await read_docx(
+        review_file_content = await read_upload_file(
             review_file,
             required=False,
             field_label=field_label(lang, "review_file"),
             lang=lang,
+            allowed_extensions=SUPPORTING_DOCUMENT_EXTENSIONS,
+            max_size_bytes=SUPPORTING_DOCUMENT_MAX_SIZE_BYTES,
         )
     except ValidationError as exc:
         result = render_conference_form(
@@ -1075,17 +1107,21 @@ async def update_conference_registration(
                 field_label=field_label(lang, "publication_file"),
                 lang=lang,
             )
-        expert_opinion_content = await read_docx(
+        expert_opinion_content = await read_upload_file(
             expert_opinion_file,
             required=False,
             field_label=field_label(lang, "expert_opinion_file"),
             lang=lang,
+            allowed_extensions=SUPPORTING_DOCUMENT_EXTENSIONS,
+            max_size_bytes=SUPPORTING_DOCUMENT_MAX_SIZE_BYTES,
         )
-        review_file_content = await read_docx(
+        review_file_content = await read_upload_file(
             review_file,
             required=False,
             field_label=field_label(lang, "review_file"),
             lang=lang,
+            allowed_extensions=SUPPORTING_DOCUMENT_EXTENSIONS,
+            max_size_bytes=SUPPORTING_DOCUMENT_MAX_SIZE_BYTES,
         )
     except ValidationError as exc:
         result = render_conference_form(
@@ -1227,6 +1263,9 @@ async def delete_author_registration(
     current_user, response = await require_user(request)
     if response:
         return response
+    maintenance_settings = await load_maintenance_settings(request)
+    if not maintenance_settings["application_deletion_enabled"]:
+        return localized_redirect(request, "/my-registrations?notice=application_deletion_disabled", status_code=303)
 
     object_id = parse_object_id(registration_id)
     if object_id is None:
@@ -1273,6 +1312,12 @@ async def my_registrations(request: Request):
         {"owner_user_id": current_user["_id"]},
         {"publication_file.data": 0, "expert_opinion_file.data": 0, "review_file.data": 0},
     ).sort("created_at", -1).to_list(length=200)
+    maintenance_settings = await load_maintenance_settings(request)
+    empty_action_html = (
+        f' <a href="/conference/register">{escape(text(lang, "records_empty_action"))}</a>'
+        if maintenance_settings["application_creation_enabled"]
+        else ""
+    )
 
     return with_language(
         request,
@@ -1282,8 +1327,9 @@ async def my_registrations(request: Request):
             records,
             admin_mode=False,
             success=notice_text(lang, request.query_params.get("notice")),
-            empty_action_html=f' <a href="/conference/register">{escape(text(lang, "records_empty_action"))}</a>',
+            empty_action_html=empty_action_html,
             empty_text=text(lang, "records_empty_my"),
+            application_deletion_enabled=maintenance_settings["application_deletion_enabled"],
             lang=lang,
         ),
     )
@@ -1315,8 +1361,143 @@ async def admin_registrations(request: Request):
     )
 
 
-@app.get("/admin/publication-validation-recheck", include_in_schema=False)
-async def admin_publication_validation_recheck_page(request: Request):
+@app.get("/admin/statistics", include_in_schema=False)
+async def admin_statistics(request: Request):
+    lang = request_language(request)
+    current_user, response = await require_admin(request, lambda user: render_forbidden(user, lang=lang))
+    if response:
+        return with_language(request, response)
+
+    aggregation = await request.app.state.registrations_collection.aggregate(
+        [
+            {
+                "$group": {
+                    "_id": "$participation",
+                    "count": {"$sum": 1},
+                }
+            }
+        ]
+    ).to_list(length=None)
+    participation_counts = {
+        str(item.get("_id") or ""): int(item.get("count") or 0)
+        for item in aggregation
+    }
+    total_count = sum(participation_counts.values())
+    return with_language(
+        request,
+        render_admin_statistics_page(
+            current_user,
+            participation_counts=participation_counts,
+            total_count=total_count,
+            lang=lang,
+        ),
+    )
+
+
+@app.get("/admin/statistics/export.xlsx", include_in_schema=False)
+async def export_admin_statistics(request: Request):
+    lang = request_language(request)
+    _current_user, response = await require_admin(request, lambda user: render_forbidden(user, lang=lang))
+    if response:
+        return with_language(request, response)
+
+    records = await request.app.state.registrations_collection.find(
+        {},
+        {"publication_file.data": 0, "expert_opinion_file.data": 0, "review_file.data": 0},
+    ).sort("created_at", -1).to_list(length=None)
+    workbook = build_applications_xlsx(records, lang=lang)
+    headers = {
+        "Content-Disposition": "attachment; filename*=UTF-8''applications.xlsx",
+    }
+    return Response(
+        content=workbook,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers=headers,
+    )
+
+
+@app.get("/admin/statistics/export.zip", include_in_schema=False)
+async def export_admin_statistics_zip(request: Request):
+    """Собирает zip-архив с файлами из заявок. В корне архива — папки с ФИО, в каждой папке — файлы: публикация, экспертное заключение, рецензия (если есть)."""
+    import zipstream
+
+    lang = request_language(request)
+    _current_user, response = await require_admin(request, lambda user: render_forbidden(user, lang=lang))
+    if response:
+        return with_language(request, response)
+
+    def _sanitize_part(name: str) -> str:
+        # Replace path separators and control chars
+        if not name:
+            return ""
+        forbidden = ['/', '\\', '\r', '\n']
+        result = name
+        for ch in forbidden:
+            result = result.replace(ch, '_')
+        return result.strip() or ""
+
+    def _folder_name_for(record: dict) -> str:
+        parts = [str(record.get("last_name") or "").strip(), str(record.get("first_name") or "").strip(), str(record.get("middle_name") or "").strip()]
+        parts = [p for p in parts if p]
+        if not parts:
+            return "unnamed"
+        name = " ".join(parts)
+        return _sanitize_part(name)
+
+    # Use a cursor and iterate in batches to avoid loading all documents into memory at once.
+    cursor = request.app.state.registrations_collection.find(
+        {},
+        {"publication_file": 1, "expert_opinion_file": 1, "review_file": 1, "last_name": 1, "first_name": 1, "middle_name": 1},
+    ).sort("created_at", -1).batch_size(50)
+
+    async def _stream_zip():
+        zs = zipstream.ZipStream(compress_type=zipstream.ZIP_DEFLATED)
+        # Track names in folder to avoid overwriting
+        folder_contents: dict[str, set[str]] = {}
+        async for rec in cursor:
+            folder = _folder_name_for(rec)
+            # if duplicate folder name among records, we accept merging into same folder; ensure unique filenames inside
+            folder_contents.setdefault(folder, set())
+            for field_key in [("publication_file", "publication"), ("expert_opinion_file", "expert-opinion"), ("review_file", "review")]:
+                rec_field = rec.get(field_key[0]) or {}
+                file_data = rec_field.get("data")
+                filename = str(rec_field.get("filename") or "").strip()
+                if not file_data or not filename:
+                    continue
+                safe_filename = _sanitize_part(filename)
+                # ensure unique filename inside folder
+                arc_name = f"{folder}/{safe_filename}"
+                if arc_name in folder_contents[folder]:
+                    # append a numeric suffix
+                    base, dot, ext = safe_filename.rpartition('.')
+                    if base:
+                        base_name = base
+                    else:
+                        base_name = safe_filename
+                        ext = ''
+                    i = 1
+                    while True:
+                        candidate = f"{base_name}({i}){('.' + ext) if ext else ''}"
+                        arc_name = f"{folder}/{candidate}"
+                        if arc_name not in folder_contents[folder]:
+                            safe_filename = candidate
+                            break
+                        i += 1
+                folder_contents[folder].add(arc_name)
+                try:
+                    zs.add(file_data, arc_name)
+                except Exception:
+                    # skip problematic file
+                    continue
+        for chunk in zs:
+            yield chunk
+
+    headers = {"Content-Disposition": "attachment; filename*=UTF-8''applications.zip"}
+    return StreamingResponse(_stream_zip(), media_type="application/zip", headers=headers)
+
+
+@app.get("/admin/maintenance", include_in_schema=False)
+async def admin_maintenance_page(request: Request):
     lang = request_language(request)
     current_user, response = await require_admin(request, lambda user: render_forbidden(user, lang=lang))
     if response:
@@ -1324,8 +1505,11 @@ async def admin_publication_validation_recheck_page(request: Request):
 
     target_filter = {"publication_file.data": {"$exists": True}}
     target_count = await request.app.state.registrations_collection.count_documents(target_filter)
+    maintenance_settings = await load_maintenance_settings(request)
     queued_value = request.query_params.get("queued")
     success = None
+    if request.query_params.get("settings") == "saved":
+        success = text(lang, "admin_maintenance_settings_success")
     if queued_value is not None:
         try:
             queued_count = max(0, int(queued_value))
@@ -1340,16 +1524,36 @@ async def admin_publication_validation_recheck_page(request: Request):
 
     return with_language(
         request,
-        render_admin_publication_recheck_page(
+        render_admin_maintenance_page(
             current_user,
             target_count=target_count,
+            maintenance_settings=maintenance_settings,
             success=success,
             lang=lang,
         ),
     )
 
 
-@app.post("/admin/publication-validation-recheck", include_in_schema=False)
+@app.post("/admin/maintenance", include_in_schema=False)
+async def update_admin_maintenance_settings(
+    request: Request,
+    application_creation_enabled: str | None = Form(None),
+    application_deletion_enabled: str | None = Form(None),
+):
+    lang = request_language(request)
+    current_user, response = await require_admin(request, lambda user: render_forbidden(user, lang=lang))
+    if response:
+        return with_language(request, response)
+
+    await save_maintenance_settings(
+        request,
+        application_creation_enabled=application_creation_enabled == "on",
+        application_deletion_enabled=application_deletion_enabled == "on",
+    )
+    return localized_redirect(request, "/admin/maintenance?settings=saved", status_code=303)
+
+
+@app.post("/admin/maintenance/publication-validation-recheck", include_in_schema=False)
 async def admin_publication_validation_recheck(request: Request):
     lang = request_language(request)
     current_user, response = await require_admin(request, lambda user: render_forbidden(user, lang=lang))
@@ -1368,7 +1572,7 @@ async def admin_publication_validation_recheck(request: Request):
     )
     return localized_redirect(
         request,
-        f"/admin/publication-validation-recheck?queued={update_result.matched_count}",
+        f"/admin/maintenance?queued={update_result.matched_count}",
         status_code=303,
     )
 

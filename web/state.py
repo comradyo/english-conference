@@ -17,6 +17,7 @@ async def lifespan(app: FastAPI):
     app.state.mongo_db = database
     app.state.users_collection = database[settings.users_collection]
     app.state.registrations_collection = database[settings.registrations_collection]
+    app.state.maintenance_collection = database[settings.maintenance_collection]
     app.state.email_tasks_collection = database[settings.email_tasks_collection]
     app.state.password_reset_tokens_collection = database[settings.password_reset_tokens_collection]
     app.state.sessions_collection = database[settings.sessions_collection]

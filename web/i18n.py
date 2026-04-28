@@ -33,6 +33,7 @@ TEXTS: dict[str, dict[str, str]] = {
     "nav_register": {"ru": "Создание заявки", "en": "Creating an application"},
     "nav_my_records": {"ru": "Мои заявки", "en": "My applications"},
     "nav_all_records": {"ru": "Все заявки", "en": "All applications"},
+    "nav_statistics": {"ru": "Статистика", "en": "Statistics"},
     "nav_logout": {"ru": "Выйти", "en": "Log out"},
     "notice_login_required": {"ru": "Сначала войдите в личный кабинет.", "en": "Please sign in first."},
     "notice_logged_out": {"ru": "Сеанс завершён.", "en": "You have been signed out."},
@@ -67,6 +68,10 @@ TEXTS: dict[str, dict[str, str]] = {
     "notice_delete_not_allowed": {
         "ru": "Удаление недоступно для заявки в её текущем статусе.",
         "en": "Deletion is not available for the application in its current status.",
+    },
+    "notice_application_deletion_disabled": {
+        "ru": "Удаление заявок отключено.",
+        "en": "Application deletion is disabled.",
     },
     "notice_password_reset_email_queued": {
         "ru": "Если аккаунт с таким email существует, мы отправили ссылку для смены пароля.",
@@ -176,12 +181,12 @@ TEXTS: dict[str, dict[str, str]] = {
         "en": "For students of Moscow universities only oral presentation participation is allowed.",
     },
     "hint_expert_opinion_file": {
-        "ru": "При отсутствии на момент подачи заявки необходимо впоследствии отправить на graduate.applications@yandex.ru",
-        "en": "If unavailable at the time of application should be sent subsequently to graduate.applications@yandex.ru",
+        "ru": "Формат docx/pdf, размер <20Мб. При отсутствии на момент подачи заявки необходимо впоследствии отправить на graduate.applications@yandex.ru",
+        "en": "docx/pdf, <20 MB. If unavailable at the time of application should be sent subsequently to graduate.applications@yandex.ru",
     },
     "hint_review_file": {
-        "ru": "Формат docx, размер <10Мб",
-        "en": "docx, <10 MB",
+        "ru": "Формат docx/pdf, размер <20Мб",
+        "en": "docx/pdf, <20 MB",
     },
     "current_file_name_hint": {
         "ru": "Текущий файл: {filename}. Если новый файл не выбран, останется текущий.",
@@ -216,9 +221,54 @@ TEXTS: dict[str, dict[str, str]] = {
     "owner_account_email": {"ru": "Владелец аккаунта", "en": "Account owner"},
     "records_my_title": {"ru": "Мои заявки", "en": "My applications"},
     "records_admin_title": {"ru": "Все заявки пользователей", "en": "All user applications"},
+    "admin_statistics_title": {"ru": "Статистика", "en": "Statistics"},
+    "admin_statistics_heading": {
+        "ru": "Заявки по формату участия",
+        "en": "Applications by participation format",
+    },
+    "admin_statistics_total_label": {"ru": "Всего заявок", "en": "Total applications"},
+    "admin_statistics_export_button": {
+        "ru": "Выгрузить все заявки в Excel",
+        "en": "Export all applications to Excel",
+    },
+    "admin_statistics_export_zip_button": {
+        "ru": "Выгрузить файлы заявок в ZIP",
+        "en": "Export application files as ZIP",
+    },
+    "admin_statistics_table_format": {"ru": "Формат участия", "en": "Participation format"},
+    "admin_statistics_table_count": {"ru": "Количество заявок", "en": "Application count"},
+    "admin_statistics_empty_format": {"ru": "Формат не указан", "en": "No participation format"},
     "admin_publication_recheck_title": {
         "ru": "Перепроверка файлов публикаций",
         "en": "Publication file revalidation",
+    },
+    "admin_maintenance_title": {
+        "ru": "Обслуживание",
+        "en": "Maintenance",
+    },
+    "admin_maintenance_controls_heading": {
+        "ru": "Управление заявками",
+        "en": "Application controls",
+    },
+    "admin_maintenance_controls_desc": {
+        "ru": "Переключатели ниже разрешают или запрещают создание и удаление заявок.",
+        "en": "Use the toggles below to allow or block application creation and deletion.",
+    },
+    "admin_maintenance_creation_toggle": {
+        "ru": "Разрешить создание заявок",
+        "en": "Allow application creation",
+    },
+    "admin_maintenance_deletion_toggle": {
+        "ru": "Разрешить удаление заявок",
+        "en": "Allow application deletion",
+    },
+    "admin_maintenance_save_button": {
+        "ru": "Сохранить настройки",
+        "en": "Save settings",
+    },
+    "admin_maintenance_settings_success": {
+        "ru": "Настройки обслуживания сохранены.",
+        "en": "Maintenance settings have been saved.",
     },
     "admin_publication_recheck_heading": {
         "ru": "Повторная автопроверка загруженных публикаций",
@@ -254,6 +304,10 @@ TEXTS: dict[str, dict[str, str]] = {
     },
     "records_empty_admin": {"ru": "В системе пока нет заявок.", "en": "There are no applications in the system yet."},
     "records_empty_action": {"ru": "Перейти к форме регистрации", "en": "Go to the registration form"},
+    "application_creation_disabled_body": {
+        "ru": "Регистрация закрыта.",
+        "en": "Registration is closed.",
+    },
     "edit_rejected_application": {"ru": "Редактировать заявку", "en": "Edit application"},
     "delete_pending_application": {"ru": "Удалить заявку", "en": "Delete application"},
     "delete_application_confirm": {
@@ -390,6 +444,7 @@ TEXTS: dict[str, dict[str, str]] = {
     "registration_saved": {"ru": "Заявка сохранена.", "en": "The application has been saved."},
     "docx_file_required": {"ru": "{field}: файл обязателен.", "en": "{field}: the file is required."},
     "docx_only": {"ru": "{field}: можно загрузить только файл в формате .docx.", "en": "{field}: only .docx files are allowed."},
+    "file_type_only": {"ru": "{field}: можно загрузить только файл в формате {formats}.", "en": "{field}: only {formats} files are allowed."},
     "docx_empty": {"ru": "{field}: загруженный файл пуст.", "en": "{field}: the uploaded file is empty."},
     "docx_too_large": {
         "ru": "{field}: размер файла превышает допустимые {size} байт.",
@@ -469,6 +524,7 @@ FIELD_LABELS: dict[str, dict[str, str]] = {
     "admin_comment": {"ru": "Комментарий к заявке", "en": "Application comment"},
     "comments": {"ru": "Комментарии к заявке", "en": "Application comments"},
     "created_at": {"ru": "Создано", "en": "Created"},
+    "updated_at": {"ru": "Обновлено", "en": "Updated"},
 }
 
 PARTICIPATION_LABELS = {

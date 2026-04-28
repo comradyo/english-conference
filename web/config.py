@@ -11,6 +11,7 @@ class Settings:
     mongo_db: str
     users_collection: str
     registrations_collection: str
+    maintenance_collection: str
     email_tasks_collection: str
     password_reset_tokens_collection: str
     sessions_collection: str
@@ -34,6 +35,7 @@ class Settings:
             mongo_db=os.getenv("MONGO_DB", "eng_conference"),
             users_collection=os.getenv("WEB_USERS_COLLECTION", "web_users"),
             registrations_collection=os.getenv("WEB_REGISTRATIONS_COLLECTION", "conference_registrations"),
+            maintenance_collection=os.getenv("WEB_MAINTENANCE_COLLECTION", "web_maintenance"),
             email_tasks_collection=os.getenv("WEB_EMAIL_TASKS_COLLECTION", "email_tasks"),
             password_reset_tokens_collection=os.getenv(
                 "WEB_PASSWORD_RESET_TOKENS_COLLECTION",

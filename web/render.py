@@ -205,6 +205,7 @@ def nav_html(current_user: dict[str, Any] | None, *, lang: str = DEFAULT_LANGUAG
         links.append(f'<a href="/my-registrations">{escape(text(lang, "nav_my_records"))}</a>')
         if current_user.get("is_admin"):
             links.append(f'<a href="/all_applications">{escape(text(lang, "nav_all_records"))}</a>')
+            links.append(f'<a href="/admin/statistics">{escape(text(lang, "nav_statistics"))}</a>')
         links.append(f'<a href="/logout">{escape(text(lang, "nav_logout"))}</a>')
     else:
         links.append(f'<a href="/">{escape(text(lang, "nav_auth"))}</a>')
@@ -464,6 +465,64 @@ def render_precheck_section(
         <button type="submit" data-precheck-submit data-loading-label="{escape(text(lang, 'precheck_button_loading'), quote=True)}">{escape(text(lang, "precheck_button"))}</button>
       </form>
     </section>
+    """
+
+
+def render_precheck_script() -> str:
+    return """
+    <script>
+      (() => {
+        const bindPrecheckForm = () => {
+          const panel = document.querySelector("[data-precheck-panel]");
+          if (!panel) {
+            return;
+          }
+          const precheckForm = panel.querySelector("[data-precheck-form]");
+          const precheckSubmit = panel.querySelector("[data-precheck-submit]");
+          if (!precheckForm || !precheckSubmit || precheckForm.dataset.precheckBound === "true") {
+            return;
+          }
+          precheckForm.dataset.precheckBound = "true";
+          const defaultLabel = precheckSubmit.textContent;
+          const loadingLabel = precheckSubmit.dataset.loadingLabel || defaultLabel;
+
+          precheckForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            if (!precheckForm.reportValidity()) {
+              return;
+            }
+            precheckSubmit.disabled = true;
+            precheckSubmit.textContent = loadingLabel;
+            panel.setAttribute("aria-busy", "true");
+
+            try {
+              const response = await fetch(precheckForm.action, {
+                method: "POST",
+                body: new FormData(precheckForm),
+                headers: {
+                  "X-Requested-With": "fetch",
+                },
+              });
+              const html = await response.text();
+              const nextDocument = new DOMParser().parseFromString(html, "text/html");
+              const nextPanel = nextDocument.querySelector("[data-precheck-panel]");
+              if (!nextPanel) {
+                throw new Error("Missing precheck panel in response.");
+              }
+              panel.replaceWith(nextPanel);
+              bindPrecheckForm();
+            } catch (error) {
+              precheckSubmit.disabled = false;
+              precheckSubmit.textContent = defaultLabel;
+              panel.removeAttribute("aria-busy");
+              precheckForm.submit();
+            }
+          });
+        };
+
+        bindPrecheckForm();
+      })();
+    </script>
     """
 
 
@@ -787,6 +846,7 @@ def render_conference_form(
     body = f"""
     {success_modal}
     {precheck_section}
+    {render_precheck_script()}
     <section class="panel"><h2>{escape(text(lang, form_title_key))}</h2><p>{escape(text(lang, form_desc_key))}</p>
       <form id="conference-registration-form" method="post" action="{escape(form_action, quote=True)}" enctype="multipart/form-data">
         <div class="grid">
@@ -804,8 +864,8 @@ def render_conference_form(
           <label><span class="field-caption">{escape(field_label("publication_title", lang=lang))} <span class="required-mark">*</span></span><input type="text" name="publication_title" required value="{field_value(values, 'publication_title')}"></label>
           <label><span class="field-caption">{escape(field_label("foreign_language_consultant", lang=lang))} <span class="required-mark">*</span></span><input type="text" name="foreign_language_consultant" required value="{field_value(values, 'foreign_language_consultant')}"></label>
           <label><span class="field-caption">{escape(field_label("publication_file", lang=lang))} <span class="required-mark" data-publication-required-mark{publication_required_mark_hidden_attr}>*</span></span><input type="file" name="publication_file" accept=".docx"{publication_required_attr}{publication_disabled_attr} data-publication-file-input data-has-existing-file="{"true" if has_existing_publication_file else "false"}"><span class="field-hint">{publication_hint_html}</span></label>
-          <label><span class="field-caption">{escape(field_label("expert_opinion_file", lang=lang))}</span><input type="file" name="expert_opinion_file" accept=".docx"><span class="field-hint">{expert_hint_html}</span></label>
-          <label><span class="field-caption">{escape(field_label("review_file", lang=lang))}</span><input type="file" name="review_file" accept=".docx"><span class="field-hint">{review_hint_html}</span></label>
+          <label><span class="field-caption">{escape(field_label("expert_opinion_file", lang=lang))}</span><input type="file" name="expert_opinion_file" accept=".docx,.pdf"><span class="field-hint">{expert_hint_html}</span></label>
+          <label><span class="field-caption">{escape(field_label("review_file", lang=lang))}</span><input type="file" name="review_file" accept=".docx,.pdf"><span class="field-hint">{review_hint_html}</span></label>
         </div>
         <label class="consent-row"><input type="checkbox" name="file_requirements_consent" required><span>{file_requirements_text_html}</span></label>
         <label class="consent-row"><input type="checkbox" name="personal_data_consent" required><span>{consent_text_html}</span></label>
@@ -844,56 +904,6 @@ def render_conference_form(
             form.addEventListener("change", updateSubmitState);
             updateSubmitState();
           }}
-
-          const bindPrecheckForm = () => {{
-            const panel = document.querySelector("[data-precheck-panel]");
-            if (!panel) {{
-              return;
-            }}
-            const precheckForm = panel.querySelector("[data-precheck-form]");
-            const precheckSubmit = panel.querySelector("[data-precheck-submit]");
-            if (!precheckForm || !precheckSubmit || precheckForm.dataset.precheckBound === "true") {{
-              return;
-            }}
-            precheckForm.dataset.precheckBound = "true";
-            const defaultLabel = precheckSubmit.textContent;
-            const loadingLabel = precheckSubmit.dataset.loadingLabel || defaultLabel;
-
-            precheckForm.addEventListener("submit", async (event) => {{
-              event.preventDefault();
-              if (!precheckForm.reportValidity()) {{
-                return;
-              }}
-              precheckSubmit.disabled = true;
-              precheckSubmit.textContent = loadingLabel;
-              panel.setAttribute("aria-busy", "true");
-
-              try {{
-                const response = await fetch(precheckForm.action, {{
-                  method: "POST",
-                  body: new FormData(precheckForm),
-                  headers: {{
-                    "X-Requested-With": "fetch",
-                  }},
-                }});
-                const html = await response.text();
-                const nextDocument = new DOMParser().parseFromString(html, "text/html");
-                const nextPanel = nextDocument.querySelector("[data-precheck-panel]");
-                if (!nextPanel) {{
-                  throw new Error("Missing precheck panel in response.");
-                }}
-                panel.replaceWith(nextPanel);
-                bindPrecheckForm();
-              }} catch (error) {{
-                precheckSubmit.disabled = false;
-                precheckSubmit.textContent = defaultLabel;
-                panel.removeAttribute("aria-busy");
-                precheckForm.submit();
-              }}
-            }});
-          }};
-
-          bindPrecheckForm();
         }})();
       </script>
       <p class="form-note"><span class="required-mark">*</span> {escape(text(lang, "required_note"))}</p>
@@ -902,7 +912,13 @@ def render_conference_form(
     return layout(text(lang, page_title_key), body, current_user=current_user, error=error, lang=lang)
 
 
-def render_record_card(record: dict[str, Any], *, admin_mode: bool, lang: str = DEFAULT_LANGUAGE) -> str:
+def render_record_card(
+    record: dict[str, Any],
+    *,
+    admin_mode: bool,
+    application_deletion_enabled: bool = True,
+    lang: str = DEFAULT_LANGUAGE,
+) -> str:
     publication_file = record.get("publication_file") or {}
     expert_opinion_file = record.get("expert_opinion_file") or {}
     review_file = record.get("review_file") or {}
@@ -915,7 +931,7 @@ def render_record_card(record: dict[str, Any], *, admin_mode: bool, lang: str = 
         participation_status=participation_status,
         review_status=review_status,
     )
-    can_delete = author_can_delete_registration(
+    can_delete = application_deletion_enabled and author_can_delete_registration(
         participation=str(record.get("participation") or ""),
         participation_status=participation_status,
         review_status=review_status,
@@ -1183,9 +1199,9 @@ def render_admin_table(
     )
     return f"""
     <style>
-    .admin-layout {{ display:grid; grid-template-columns:minmax(0, 1fr) minmax(300px, 340px); gap:18px; align-items:start; }}
-    .admin-table-pane {{ min-width:0; }}
-    .admin-side-pane {{ position:sticky; top:24px; display:grid; gap:14px; }}
+    .admin-layout {{ display:grid; grid-template-columns:minmax(0, 1fr) minmax(300px, 340px); gap:18px; align-items:stretch; height:var(--admin-workspace-height, 62vh); min-height:0; }}
+    .admin-table-pane {{ min-width:0; min-height:0; overflow-y:auto; overscroll-behavior:contain; padding-right:2px; scrollbar-gutter:stable; }}
+    .admin-side-pane {{ min-height:0; overflow-y:auto; overscroll-behavior:contain; display:grid; align-content:start; gap:14px; padding-right:2px; scrollbar-gutter:stable; }}
     .admin-row {{ cursor:pointer; }}
     .admin-row.is-active {{ background:rgba(15,89,89,.08); }}
     .admin-row:focus-visible {{ outline:2px solid rgba(15,89,89,.35); outline-offset:-2px; }}
@@ -1194,7 +1210,8 @@ def render_admin_table(
     .admin-side-placeholder[hidden] {{ display:none; }}
     .row-action-hint {{ color:var(--accent); font-weight:700; white-space:nowrap; }}
     .file-stack {{ display:grid; gap:6px; }}
-    @media (max-width:980px) {{ .admin-layout {{ grid-template-columns:1fr; }} .admin-side-pane {{ position:static; }} }}
+    @media (max-width:980px) {{ .admin-layout {{ grid-template-columns:1fr; height:auto; }} .admin-table-pane {{ max-height:min(54vh, 560px); }} .admin-side-pane {{ max-height:min(72vh, 640px); }} }}
+    @media (max-width:560px) {{ .admin-table-pane {{ max-height:48vh; }} .admin-side-pane {{ max-height:68vh; }} }}
     </style>
     <section class="admin-layout">
       <div class="admin-table-pane">
@@ -1206,6 +1223,31 @@ def render_admin_table(
       </aside>
     </section>
     <script>
+    (() => {{
+      const layout = document.querySelector('.admin-layout');
+      if (!layout) {{
+        return;
+      }}
+      const desktopQuery = window.matchMedia('(min-width: 981px)');
+      const syncAdminWorkspaceHeight = () => {{
+        if (!desktopQuery.matches) {{
+          layout.style.removeProperty('--admin-workspace-height');
+          return;
+        }}
+        const footer = document.querySelector('.site-footer');
+        const top = layout.getBoundingClientRect().top;
+        const footerReserve = footer ? footer.offsetHeight + 34 : 24;
+        const availableHeight = window.innerHeight - top - footerReserve;
+        layout.style.setProperty('--admin-workspace-height', `${{Math.max(260, availableHeight)}}px`);
+      }};
+      syncAdminWorkspaceHeight();
+      window.addEventListener('load', syncAdminWorkspaceHeight);
+      window.addEventListener('resize', syncAdminWorkspaceHeight);
+      document.addEventListener('DOMContentLoaded', syncAdminWorkspaceHeight);
+      if (desktopQuery.addEventListener) {{
+        desktopQuery.addEventListener('change', syncAdminWorkspaceHeight);
+      }}
+    }})();
     (() => {{
       const rows = Array.from(document.querySelectorAll('.admin-row[data-admin-target]'));
       const panels = Array.from(document.querySelectorAll('[data-admin-card]'));
@@ -1247,6 +1289,10 @@ def render_admin_table(
     """
 
 
+def render_user_records_body(content_html: str, *, lang: str = DEFAULT_LANGUAGE) -> str:
+    return render_precheck_section(lang=lang) + render_precheck_script() + content_html
+
+
 def render_records_page(
     title: str,
     current_user: dict[str, Any],
@@ -1257,40 +1303,145 @@ def render_records_page(
     empty_text: str,
     empty_action_html: str = "",
     selected_registration_id: str | None = None,
+    application_deletion_enabled: bool = True,
     lang: str = DEFAULT_LANGUAGE,
 ) -> HTMLResponse:
     if records:
         if admin_mode:
             body = render_admin_table(records, selected_registration_id=selected_registration_id, lang=lang)
         else:
-            body = f'<section class="cards">{"".join(render_record_card(record, admin_mode=admin_mode, lang=lang) for record in records)}</section>'
+            records_html = "".join(
+                render_record_card(
+                    record,
+                    admin_mode=admin_mode,
+                    application_deletion_enabled=application_deletion_enabled,
+                    lang=lang,
+                )
+                for record in records
+            )
+            body = render_user_records_body(f'<section class="cards">{records_html}</section>', lang=lang)
     else:
-        body = f'<div class="empty">{escape(empty_text)}{empty_action_html}</div>'
+        if admin_mode:
+            body = f'<div class="empty">{escape(empty_text)}{empty_action_html}</div>'
+        else:
+            body = render_user_records_body(
+                f'<div class="empty">{escape(empty_text)}{empty_action_html}</div>',
+                lang=lang,
+            )
     return layout(title, body, current_user=current_user, success=success, lang=lang)
 
 
-def render_admin_publication_recheck_page(
+def render_admin_statistics_page(
+    current_user: dict[str, Any],
+    *,
+    participation_counts: dict[str, int],
+    total_count: int,
+    lang: str = DEFAULT_LANGUAGE,
+) -> HTMLResponse:
+    ordered_participations = list(PARTICIPATION_OPTIONS)
+    ordered_participations.extend(sorted(key for key in participation_counts if key not in PARTICIPATION_OPTIONS))
+    rows_html = []
+    for participation in ordered_participations:
+        count = participation_counts.get(participation, 0)
+        if not participation and count == 0:
+            continue
+        label = (
+            text(lang, "admin_statistics_empty_format")
+            if not participation
+            else participation_label(lang, participation)
+        )
+        rows_html.append(
+            f"<tr><td>{escape(label)}</td><td>{escape(str(count))}</td></tr>"
+        )
+
+    if not rows_html:
+        rows_html.append(
+            f"<tr><td>{escape(text(lang, 'admin_statistics_empty_format'))}</td><td>0</td></tr>"
+        )
+
+    body = f"""
+    <style>
+    .statistics-actions {{ display:flex; gap:12px; align-items:center; flex-wrap:wrap; }}
+    .statistics-actions .action-link {{ width:auto; }}
+    .statistics-table {{ width:100%; border-collapse:collapse; }}
+    .statistics-table th, .statistics-table td {{ padding:12px 10px; border-top:1px solid var(--line); text-align:left; vertical-align:top; }}
+    .statistics-table th {{ color:var(--muted); font-size:.9rem; font-weight:700; }}
+    .statistics-total {{ font-size:1.5rem; color:var(--accent); }}
+    </style>
+    <section class="cards">
+      <section class="panel">
+        <div class="card-title">
+          <div>
+            <h2>{escape(text(lang, "admin_statistics_heading"))}</h2>
+            <div class="meta">
+              {meta_row(text(lang, "admin_statistics_total_label"), str(total_count))}
+            </div>
+          </div>
+            <div class="statistics-actions">
+              <a class="action-link" href="/admin/statistics/export.xlsx">{escape(text(lang, "admin_statistics_export_button"))}</a>
+              <a class="action-link" href="/admin/statistics/export.zip">{escape(text(lang, "admin_statistics_export_zip_button"))}</a>
+           </div>
+        </div>
+      </section>
+      <section class="panel">
+        <table class="statistics-table">
+          <thead>
+            <tr>
+              <th>{escape(text(lang, "admin_statistics_table_format"))}</th>
+              <th>{escape(text(lang, "admin_statistics_table_count"))}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {''.join(rows_html)}
+          </tbody>
+        </table>
+      </section>
+    </section>
+    """
+    return layout(
+        text(lang, "admin_statistics_title"),
+        body,
+        current_user=current_user,
+        lang=lang,
+    )
+
+
+def render_admin_maintenance_page(
     current_user: dict[str, Any],
     *,
     target_count: int,
+    maintenance_settings: dict[str, bool],
     success: str | None = None,
     lang: str = DEFAULT_LANGUAGE,
 ) -> HTMLResponse:
     button_disabled_attr = " disabled" if target_count <= 0 else ""
+    creation_checked_attr = " checked" if maintenance_settings.get("application_creation_enabled", True) else ""
+    deletion_checked_attr = " checked" if maintenance_settings.get("application_deletion_enabled", True) else ""
     body = f"""
+    <section class="split">
+    <section class="panel">
+      <h2>{escape(text(lang, "admin_maintenance_controls_heading"))}</h2>
+      <p>{escape(text(lang, "admin_maintenance_controls_desc"))}</p>
+      <form method="post" action="/admin/maintenance">
+        <label class="consent-row"><input type="checkbox" name="application_creation_enabled"{creation_checked_attr}><span>{escape(text(lang, "admin_maintenance_creation_toggle"))}</span></label>
+        <label class="consent-row"><input type="checkbox" name="application_deletion_enabled"{deletion_checked_attr}><span>{escape(text(lang, "admin_maintenance_deletion_toggle"))}</span></label>
+        <button type="submit">{escape(text(lang, "admin_maintenance_save_button"))}</button>
+      </form>
+    </section>
     <section class="panel">
       <h2>{escape(text(lang, "admin_publication_recheck_heading"))}</h2>
       <p>{escape(text(lang, "admin_publication_recheck_desc"))}</p>
       <div class="meta">
         {meta_row(text(lang, "admin_publication_recheck_count_label"), str(target_count))}
       </div>
-      <form method="post" action="/admin/publication-validation-recheck" onsubmit="return confirm('{escape(text(lang, "admin_publication_recheck_confirm"), quote=True)}');">
+      <form method="post" action="/admin/maintenance/publication-validation-recheck" onsubmit="return confirm('{escape(text(lang, "admin_publication_recheck_confirm"), quote=True)}');">
         <button type="submit"{button_disabled_attr}>{escape(text(lang, "admin_publication_recheck_button"))}</button>
       </form>
     </section>
+    </section>
     """
     return layout(
-        text(lang, "admin_publication_recheck_title"),
+        text(lang, "admin_maintenance_title"),
         body,
         current_user=current_user,
         success=success,

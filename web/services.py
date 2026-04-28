@@ -16,6 +16,8 @@ from models import (
     participation_requires_publication_file,
 )
 
+MAINTENANCE_SETTINGS_ID = "application_controls"
+
 
 def now_utc() -> datetime:
     return datetime.now(timezone.utc)
@@ -64,13 +66,15 @@ def validation_message(exc: ValidationError, fallback: str, *, lang: str = DEFAU
     return fallback
 
 
-def validate_docx(
+def validate_file_extension(
     upload: UploadFile | None,
     *,
     required: bool = True,
     field_label: str = "File",
     lang: str = DEFAULT_LANGUAGE,
+    allowed_extensions: tuple[str, ...] = (".docx",),
 ) -> bool:
+    normalized_extensions = tuple(extension.lower() for extension in allowed_extensions)
     if upload is None:
         if required:
             raise HTTPException(status_code=400, detail=text(lang, "docx_file_required", field=field_label))
@@ -80,9 +84,42 @@ def validate_docx(
         if required:
             raise HTTPException(status_code=400, detail=text(lang, "docx_file_required", field=field_label))
         return False
-    if not filename.lower().endswith(".docx"):
-        raise HTTPException(status_code=400, detail=text(lang, "docx_only", field=field_label))
+    if not filename.lower().endswith(normalized_extensions):
+        if normalized_extensions == (".docx",):
+            message = text(lang, "docx_only", field=field_label)
+        else:
+            formats = ", ".join(normalized_extensions)
+            message = text(lang, "file_type_only", field=field_label, formats=formats)
+        raise HTTPException(status_code=400, detail=message)
     return True
+
+
+async def read_upload_file(
+    upload: UploadFile | None,
+    *,
+    required: bool = True,
+    field_label: str = "File",
+    lang: str = DEFAULT_LANGUAGE,
+    allowed_extensions: tuple[str, ...] = (".docx",),
+    max_size_bytes: int = MAX_FILE_SIZE_BYTES,
+) -> bytes | None:
+    if not validate_file_extension(
+        upload,
+        required=required,
+        field_label=field_label,
+        lang=lang,
+        allowed_extensions=allowed_extensions,
+    ):
+        return None
+    content = await upload.read()
+    if not content:
+        raise HTTPException(status_code=400, detail=text(lang, "docx_empty", field=field_label))
+    if len(content) > max_size_bytes:
+        raise HTTPException(
+            status_code=400,
+            detail=text(lang, "docx_too_large", field=field_label, size=max_size_bytes),
+        )
+    return content
 
 
 async def read_docx(
@@ -92,17 +129,13 @@ async def read_docx(
     field_label: str = "File",
     lang: str = DEFAULT_LANGUAGE,
 ) -> bytes | None:
-    if not validate_docx(upload, required=required, field_label=field_label, lang=lang):
-        return None
-    content = await upload.read()
-    if not content:
-        raise HTTPException(status_code=400, detail=text(lang, "docx_empty", field=field_label))
-    if len(content) > MAX_FILE_SIZE_BYTES:
-        raise HTTPException(
-            status_code=400,
-            detail=text(lang, "docx_too_large", field=field_label, size=MAX_FILE_SIZE_BYTES),
-        )
-    return content
+    return await read_upload_file(
+        upload,
+        required=required,
+        field_label=field_label,
+        lang=lang,
+        allowed_extensions=(".docx",),
+    )
 
 
 def set_session_cookie(response: Response, request: Request, token: str) -> None:
@@ -200,6 +233,46 @@ def parse_object_id(value: str) -> ObjectId | None:
 
 def create_password_reset_token() -> str:
     return secrets.token_urlsafe(32)
+
+
+def normalize_maintenance_settings(raw_settings: dict[str, Any] | None) -> dict[str, bool]:
+    raw_settings = raw_settings or {}
+    return {
+        "application_creation_enabled": raw_settings.get("application_creation_enabled") is not False,
+        "application_deletion_enabled": raw_settings.get("application_deletion_enabled") is not False,
+    }
+
+
+async def load_maintenance_settings(request: Request) -> dict[str, bool]:
+    raw_settings = await request.app.state.maintenance_collection.find_one({"_id": MAINTENANCE_SETTINGS_ID})
+    return normalize_maintenance_settings(raw_settings)
+
+
+async def save_maintenance_settings(
+    request: Request,
+    *,
+    application_creation_enabled: bool,
+    application_deletion_enabled: bool,
+) -> dict[str, bool]:
+    updated_at = now_utc()
+    settings = {
+        "application_creation_enabled": application_creation_enabled,
+        "application_deletion_enabled": application_deletion_enabled,
+    }
+    await request.app.state.maintenance_collection.update_one(
+        {"_id": MAINTENANCE_SETTINGS_ID},
+        {
+            "$set": {
+                **settings,
+                "updated_at": updated_at,
+            },
+            "$setOnInsert": {
+                "created_at": updated_at,
+            },
+        },
+        upsert=True,
+    )
+    return settings
 
 
 def build_password_reset_email_task(
