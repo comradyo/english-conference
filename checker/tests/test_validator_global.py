@@ -584,7 +584,7 @@ class ValidatorGlobalRequirementsTest(unittest.TestCase):
         self.assertIn("В тексте должны быть ссылки на все источники из списка", errors_ru)
         self.assertIn("Список источников должен формироваться в порядке первого упоминания в тексте", errors_ru)
 
-    def test_reference_formatting_violations_are_reported(self):
+    def test_reference_alignment_and_bold_violations_are_reported(self):
         doc = _valid_article_document()
         first_reference = _reference_paragraphs(doc)[0]
         first_reference.text = "[1] Source title 1. Moscow, Publisher, 2024, 10 p."
@@ -597,13 +597,13 @@ class ValidatorGlobalRequirementsTest(unittest.TestCase):
 
         errors_ru, _ = Validator(_docx_bytes(doc, pages=4)).validate()
 
-        self.assertIn(
+        self.assertIn("Элементы списка источников должны быть выровнены по левому краю или по ширине", errors_ru)
+        self.assertIn("Элементы списка источников не должны содержать полужирное начертание", errors_ru)
+        self.assertNotIn(
             "Элементы списка источников должны начинаться с формата «[N] » и табуляции после пробела",
             errors_ru,
         )
-        self.assertIn("Элементы списка источников должны быть выровнены по левому краю или по ширине", errors_ru)
-        self.assertIn("Элементы списка источников должны иметь висячий отступ, равный левому отступу", errors_ru)
-        self.assertIn("Элементы списка источников не должны содержать полужирное начертание", errors_ru)
+        self.assertNotIn("Элементы списка источников должны иметь висячий отступ, равный левому отступу", errors_ru)
 
     def test_reference_count_and_numbering_violations_are_reported(self):
         doc = _valid_article_document()

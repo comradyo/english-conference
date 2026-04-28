@@ -73,8 +73,7 @@ class Validator:
         r"^\s*(?:Рис\.?|Рисунок|Fig\.?|Figure)\s+(?P<number>\d+)\b",
         re.IGNORECASE,
     )
-    REFERENCE_ENTRY_PATTERN = re.compile(r"^\s*\[(?P<number>\d+)\]\s+\S")
-    REFERENCE_ENTRY_FORMAT_PATTERN = re.compile(r"^\[(?P<number>\d+)\] \t\S")
+    REFERENCE_ENTRY_PATTERN = re.compile(r"^\s*\[(?P<number>\d+)\]")
     BRACKETED_REFERENCE_PATTERN = re.compile(r"\[[^\[\]]+\]")
     REFERENCE_NUMBER_TOKEN_PATTERN = re.compile(r"^\d+(?:\s*[-–]\s*\d+)?$")
     REFERENCE_PAGE_TOKEN_PATTERN = re.compile(r"^(?:с|c|p)\.?\s*\d+(?:\s*[-–]\s*\d+)?$", re.IGNORECASE)
@@ -895,19 +894,6 @@ class Validator:
 
         return 0.0
 
-    @classmethod
-    def _effective_left_indent_cm(cls, paragraph) -> float:
-        indent = paragraph.paragraph_format.left_indent
-        if indent is not None:
-            return indent.cm
-
-        for style in cls._iter_style_chain(paragraph.style):
-            indent = style.paragraph_format.left_indent
-            if indent is not None:
-                return indent.cm
-
-        return 0.0
-
     # Проверяет, что стиль (или предки, от которых он наследуется), является полужирным
     @classmethod
     def _style_font_bold(cls, style) -> bool | None:
@@ -1068,16 +1054,6 @@ class Validator:
     @classmethod
     def _paragraph_has_allowed_main_indent(cls, paragraph) -> bool:
         return cls._paragraph_indent_bucket(paragraph) is not None
-
-    @classmethod
-    def _paragraph_has_reference_hanging_indent(cls, paragraph) -> bool:
-        left_indent_cm = cls._effective_left_indent_cm(paragraph)
-        first_line_indent_cm = cls._effective_first_line_indent_cm(paragraph)
-        return (
-            left_indent_cm > cls.CM_TOLERANCE
-            and first_line_indent_cm < -cls.CM_TOLERANCE
-            and cls._cm_matches(left_indent_cm, abs(first_line_indent_cm))
-        )
 
     # Первые *limit* штук непустых параграфов
     @classmethod
@@ -1996,38 +1972,22 @@ class Validator:
         if self.structure.sources_pos is None:
             return
 
-        bad_entry_pattern = False
         bad_alignment = False
-        bad_indent = False
         bad_bold = False
 
         for item in self._reference_items(self.structure):
             if self.REFERENCE_ENTRY_PATTERN.match(item.text) is None:
                 continue
 
-            if not self.REFERENCE_ENTRY_FORMAT_PATTERN.match(item.paragraph.text):
-                bad_entry_pattern = True
             if not self._is_left_or_justified(item.paragraph):
                 bad_alignment = True
-            if not self._paragraph_has_reference_hanging_indent(item.paragraph):
-                bad_indent = True
             if self._paragraph_has_bold_run(item.paragraph):
                 bad_bold = True
 
-        if bad_entry_pattern:
-            self._add_error(
-                "Элементы списка источников должны начинаться с формата «[N] » и табуляции после пробела",
-                "Reference entries must start with '[N] ' followed by a tab",
-            )
         if bad_alignment:
             self._add_error(
                 "Элементы списка источников должны быть выровнены по левому краю или по ширине",
                 "Reference entries must be left-aligned or justified",
-            )
-        if bad_indent:
-            self._add_error(
-                "Элементы списка источников должны иметь висячий отступ, равный левому отступу",
-                "Reference entries must use a hanging indent equal to the left indent",
             )
         if bad_bold:
             self._add_error(
