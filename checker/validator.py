@@ -116,6 +116,7 @@ class Validator:
         self.check_line_spacing()
         self.check_hyperlinks()
         self.check_section_breaks()
+        self.check_auto_hyphenation()
 
     def validate_article_structure(self):
         structure = self.structure
@@ -255,6 +256,30 @@ class Validator:
             pages=self._app_property_int(values, "Pages"),
             characters_with_spaces=self._app_property_int(values, "CharactersWithSpaces"),
         )
+
+    def _word_setting_enabled(self, setting_name: str) -> bool:
+        try:
+            with zipfile.ZipFile(io.BytesIO(self._docx_bytes)) as archive:
+                settings_xml = archive.read("word/settings.xml")
+        except (KeyError, zipfile.BadZipFile):
+            return False
+
+        try:
+            root = ElementTree.fromstring(settings_xml)
+        except ElementTree.ParseError:
+            return False
+
+        for element in root.iter():
+            if self._local_name(element.tag) != setting_name:
+                continue
+            value = None
+            for attr_name, attr_value in element.attrib.items():
+                if self._local_name(attr_name) == "val":
+                    value = str(attr_value).strip().lower()
+                    break
+            return value not in {"0", "false", "off", "no"}
+
+        return False
 
     def _add_error(self, message_ru: str, message_en: str) -> None:
         if message_ru not in self.errors:
@@ -1206,6 +1231,13 @@ class Validator:
             self._add_error(
                 "Разрывы разделов внутри текста не допускаются",
                 "Section breaks inside the text are not allowed",
+            )
+
+    def check_auto_hyphenation(self):
+        if self._word_setting_enabled("autoHyphenation"):
+            self._add_error(
+                "Автоматическая расстановка переносов должна быть отключена",
+                "Automatic hyphenation must be disabled",
             )
 
     def check_structural_formatting(self):

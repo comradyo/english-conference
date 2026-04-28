@@ -43,6 +43,24 @@ def _set_docx_page_count(content: bytes, pages: int) -> bytes:
     return output.getvalue()
 
 
+def _set_docx_auto_hyphenation(content: bytes, enabled: bool) -> bytes:
+    output = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(content), "r") as source, zipfile.ZipFile(output, "w") as target:
+        for item in source.infolist():
+            item_content = source.read(item.filename)
+            if item.filename == "word/settings.xml":
+                root = ElementTree.fromstring(item_content)
+                namespace = root.tag.split("}", 1)[0].strip("{")
+                for element in list(root):
+                    if _local_name(element.tag) == "autoHyphenation":
+                        root.remove(element)
+                auto_hyphenation = ElementTree.SubElement(root, f"{{{namespace}}}autoHyphenation")
+                auto_hyphenation.set(f"{{{namespace}}}val", "true" if enabled else "false")
+                item_content = ElementTree.tostring(root, encoding="utf-8", xml_declaration=True)
+            target.writestr(item, item_content)
+    return output.getvalue()
+
+
 def _configure_valid_section(section) -> None:
     section.orientation = WD_ORIENT.PORTRAIT
     section.page_width = Cm(21)
@@ -398,6 +416,13 @@ class ValidatorGlobalRequirementsTest(unittest.TestCase):
         errors_ru, _ = _validate_global(_docx_bytes(doc, pages=4))
 
         self.assertNotIn("Применять гиперссылки в тексте не допускается", errors_ru)
+
+    def test_auto_hyphenation_must_be_disabled(self):
+        content = _set_docx_auto_hyphenation(_valid_docx_bytes().getvalue(), enabled=True)
+
+        errors_ru, _ = _validate_global(io.BytesIO(content))
+
+        self.assertIn("Автоматическая расстановка переносов должна быть отключена", errors_ru)
 
     def test_valid_article_structure_metadata_and_annotations_pass(self):
         errors_ru, errors_en = Validator(_valid_article_docx_bytes()).validate()
