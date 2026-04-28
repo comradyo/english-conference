@@ -465,6 +465,12 @@ class ValidatorGlobalRequirementsTest(unittest.TestCase):
         self.assertEqual(2, len(validator.errors))
         self.assertEqual(2, len(validator.errors_eng))
 
+    def test_slice_items_with_missing_start_returns_empty_list(self):
+        validator = Validator(_valid_article_docx_bytes())
+        structure = validator._build_article_structure()
+
+        self.assertEqual([], validator._slice_items(structure, None, structure.ru_abstract_pos))
+
     def test_udk_with_colon_is_not_used_as_article_title(self):
         doc = _valid_article_document()
         doc.paragraphs[0].text = "УДК: 520.607"

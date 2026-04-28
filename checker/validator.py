@@ -464,8 +464,6 @@ class Validator:
             end_pos: int | None,
     ) -> list[ParagraphItem]:
         if start_pos is None:
-            start_pos = title_pos
-        if start_pos is None:
             return []
         start = start_pos + 1
         end = len(structure.items) if end_pos is None else end_pos
