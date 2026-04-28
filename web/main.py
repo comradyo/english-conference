@@ -1416,6 +1416,86 @@ async def export_admin_statistics(request: Request):
     )
 
 
+@app.get("/admin/statistics/export.zip", include_in_schema=False)
+async def export_admin_statistics_zip(request: Request):
+    """Собирает zip-архив с файлами из заявок. В корне архива — папки с ФИО, в каждой папке — файлы: публикация, экспертное заключение, рецензия (если есть)."""
+    from io import BytesIO
+    import zipfile
+
+    lang = request_language(request)
+    _current_user, response = await require_admin(request, lambda user: render_forbidden(user, lang=lang))
+    if response:
+        return with_language(request, response)
+
+    records = await request.app.state.registrations_collection.find(
+        {},
+        {"publication_file": 1, "expert_opinion_file": 1, "review_file": 1, "last_name": 1, "first_name": 1, "middle_name": 1},
+    ).sort("created_at", -1).to_list(length=None)
+
+    def _sanitize_part(name: str) -> str:
+        # Replace path separators and control chars
+        if not name:
+            return ""
+        forbidden = ['/', '\\', '\r', '\n']
+        result = name
+        for ch in forbidden:
+            result = result.replace(ch, '_')
+        return result.strip() or ""
+
+    def _folder_name_for(record: dict) -> str:
+        parts = [str(record.get("last_name") or "").strip(), str(record.get("first_name") or "").strip(), str(record.get("middle_name") or "").strip()]
+        parts = [p for p in parts if p]
+        if not parts:
+            return "unnamed"
+        name = " ".join(parts)
+        return _sanitize_part(name)
+
+    zip_buffer = BytesIO()
+    with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        # Track names in folder to avoid overwriting
+        folder_contents: dict[str, set[str]] = {}
+        for rec in records:
+            folder = _folder_name_for(rec)
+            # if duplicate folder name among records, we accept merging into same folder; ensure unique filenames inside
+            folder_contents.setdefault(folder, set())
+            for field_key in [("publication_file", "publication"), ("expert_opinion_file", "expert-opinion"), ("review_file", "review")]:
+                rec_field = rec.get(field_key[0]) or {}
+                file_data = rec_field.get("data")
+                filename = str(rec_field.get("filename") or "").strip()
+                if not file_data or not filename:
+                    continue
+                safe_filename = _sanitize_part(filename)
+                # ensure unique filename inside folder
+                arc_name = f"{folder}/{safe_filename}"
+                if arc_name in folder_contents[folder]:
+                    # append a numeric suffix
+                    base, dot, ext = safe_filename.rpartition('.')
+                    if base:
+                        base_name = base
+                    else:
+                        base_name = safe_filename
+                        ext = ''
+                    i = 1
+                    while True:
+                        candidate = f"{base_name}({i}){('.' + ext) if ext else ''}"
+                        arc_name = f"{folder}/{candidate}"
+                        if arc_name not in folder_contents[folder]:
+                            safe_filename = candidate
+                            break
+                        i += 1
+                folder_contents[folder].add(arc_name)
+                # write bytes
+                try:
+                    zf.writestr(arc_name, bytes(rec_field.get("data")))
+                except Exception:
+                    # skip problematic file
+                    continue
+
+    zip_buffer.seek(0)
+    headers = {"Content-Disposition": "attachment; filename*=UTF-8''applications.zip"}
+    return Response(content=zip_buffer.read(), media_type="application/zip", headers=headers)
+
+
 @app.get("/admin/maintenance", include_in_schema=False)
 async def admin_maintenance_page(request: Request):
     lang = request_language(request)

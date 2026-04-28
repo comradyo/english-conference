@@ -231,6 +231,10 @@ TEXTS: dict[str, dict[str, str]] = {
         "ru": "Выгрузить все заявки в Excel",
         "en": "Export all applications to Excel",
     },
+    "admin_statistics_export_zip_button": {
+        "ru": "Выгрузить файлы заявок в ZIP",
+        "en": "Export application files as ZIP",
+    },
     "admin_statistics_table_format": {"ru": "Формат участия", "en": "Participation format"},
     "admin_statistics_table_count": {"ru": "Количество заявок", "en": "Application count"},
     "admin_statistics_empty_format": {"ru": "Формат не указан", "en": "No participation format"},

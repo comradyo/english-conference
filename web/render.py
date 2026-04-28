@@ -1377,9 +1377,10 @@ def render_admin_statistics_page(
               {meta_row(text(lang, "admin_statistics_total_label"), str(total_count))}
             </div>
           </div>
-          <div class="statistics-actions">
-            <a class="action-link" href="/admin/statistics/export.xlsx">{escape(text(lang, "admin_statistics_export_button"))}</a>
-          </div>
+            <div class="statistics-actions">
+              <a class="action-link" href="/admin/statistics/export.xlsx">{escape(text(lang, "admin_statistics_export_button"))}</a>
+              <a class="action-link" href="/admin/statistics/export.zip">{escape(text(lang, "admin_statistics_export_zip_button"))}</a>
+           </div>
         </div>
       </section>
       <section class="panel">
