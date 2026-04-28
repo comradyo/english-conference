@@ -212,4 +212,7 @@ def _comments_text(value: Any, *, lang: str) -> str:
 
 
 def _clean_cell_text(value: str) -> str:
-    return ILLEGAL_CHARACTERS_RE.sub(" ", value)
+    cleaned = ILLEGAL_CHARACTERS_RE.sub(" ", value)
+    if cleaned.startswith(("=", "+", "-", "@")):
+        return f"'{cleaned}"
+    return cleaned
