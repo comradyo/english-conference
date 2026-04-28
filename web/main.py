@@ -1485,7 +1485,7 @@ async def export_admin_statistics_zip(request: Request):
                         i += 1
                 folder_contents[folder].add(arc_name)
                 try:
-                    zs.add(bytes(file_data), arc_name)
+                    zs.add(file_data, arc_name)
                 except Exception:
                     # skip problematic file
                     continue
