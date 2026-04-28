@@ -101,6 +101,7 @@ async def read_upload_file(
     field_label: str = "File",
     lang: str = DEFAULT_LANGUAGE,
     allowed_extensions: tuple[str, ...] = (".docx",),
+    max_size_bytes: int = MAX_FILE_SIZE_BYTES,
 ) -> bytes | None:
     if not validate_docx(
         upload,
@@ -113,10 +114,10 @@ async def read_upload_file(
     content = await upload.read()
     if not content:
         raise HTTPException(status_code=400, detail=text(lang, "docx_empty", field=field_label))
-    if len(content) > MAX_FILE_SIZE_BYTES:
+    if len(content) > max_size_bytes:
         raise HTTPException(
             status_code=400,
-            detail=text(lang, "docx_too_large", field=field_label, size=MAX_FILE_SIZE_BYTES),
+            detail=text(lang, "docx_too_large", field=field_label, size=max_size_bytes),
         )
     return content
 

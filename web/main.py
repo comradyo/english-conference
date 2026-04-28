@@ -92,6 +92,7 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 PENDING_PARTICIPATION_STATUS = PARTICIPATION_STATUSES[0]
 SUPPORTING_DOCUMENT_EXTENSIONS = (".docx", ".pdf")
+SUPPORTING_DOCUMENT_MAX_SIZE_BYTES = 20 * 1024 * 1024
 
 
 def with_language(request: Request, response):
@@ -954,6 +955,7 @@ async def submit_conference_registration(
             field_label=field_label(lang, "expert_opinion_file"),
             lang=lang,
             allowed_extensions=SUPPORTING_DOCUMENT_EXTENSIONS,
+            max_size_bytes=SUPPORTING_DOCUMENT_MAX_SIZE_BYTES,
         )
         review_file_content = await read_upload_file(
             review_file,
@@ -961,6 +963,7 @@ async def submit_conference_registration(
             field_label=field_label(lang, "review_file"),
             lang=lang,
             allowed_extensions=SUPPORTING_DOCUMENT_EXTENSIONS,
+            max_size_bytes=SUPPORTING_DOCUMENT_MAX_SIZE_BYTES,
         )
     except ValidationError as exc:
         result = render_conference_form(
@@ -1108,6 +1111,7 @@ async def update_conference_registration(
             field_label=field_label(lang, "expert_opinion_file"),
             lang=lang,
             allowed_extensions=SUPPORTING_DOCUMENT_EXTENSIONS,
+            max_size_bytes=SUPPORTING_DOCUMENT_MAX_SIZE_BYTES,
         )
         review_file_content = await read_upload_file(
             review_file,
@@ -1115,6 +1119,7 @@ async def update_conference_registration(
             field_label=field_label(lang, "review_file"),
             lang=lang,
             allowed_extensions=SUPPORTING_DOCUMENT_EXTENSIONS,
+            max_size_bytes=SUPPORTING_DOCUMENT_MAX_SIZE_BYTES,
         )
     except ValidationError as exc:
         result = render_conference_form(

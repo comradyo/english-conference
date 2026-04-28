@@ -180,12 +180,12 @@ TEXTS: dict[str, dict[str, str]] = {
         "en": "For students of Moscow universities only oral presentation participation is allowed.",
     },
     "hint_expert_opinion_file": {
-        "ru": "Формат docx/pdf, размер <10Мб. При отсутствии на момент подачи заявки необходимо впоследствии отправить на graduate.applications@yandex.ru",
-        "en": "docx/pdf, <10 MB. If unavailable at the time of application should be sent subsequently to graduate.applications@yandex.ru",
+        "ru": "Формат docx/pdf, размер <20Мб. При отсутствии на момент подачи заявки необходимо впоследствии отправить на graduate.applications@yandex.ru",
+        "en": "docx/pdf, <20 MB. If unavailable at the time of application should be sent subsequently to graduate.applications@yandex.ru",
     },
     "hint_review_file": {
-        "ru": "Формат docx/pdf, размер <10Мб",
-        "en": "docx/pdf, <10 MB",
+        "ru": "Формат docx/pdf, размер <20Мб",
+        "en": "docx/pdf, <20 MB",
     },
     "current_file_name_hint": {
         "ru": "Текущий файл: {filename}. Если новый файл не выбран, останется текущий.",
