@@ -15,6 +15,7 @@ from pydantic import ValidationError
 from pymongo.errors import DuplicateKeyError
 
 from i18n import field_label, notice_text, text
+from excel_export import build_applications_xlsx
 from models import (
     AccountLoginPayload,
     AccountRegistrationPayload,
@@ -31,6 +32,7 @@ from models import (
 from render import (
     layout,
     render_admin_maintenance_page,
+    render_admin_statistics_page,
     render_auth_page,
     render_conference_form,
     render_forbidden,
@@ -1356,6 +1358,61 @@ async def admin_registrations(request: Request):
             selected_registration_id=request.query_params.get("selected"),
             lang=lang,
         ),
+    )
+
+
+@app.get("/admin/statistics", include_in_schema=False)
+async def admin_statistics(request: Request):
+    lang = request_language(request)
+    current_user, response = await require_admin(request, lambda user: render_forbidden(user, lang=lang))
+    if response:
+        return with_language(request, response)
+
+    aggregation = await request.app.state.registrations_collection.aggregate(
+        [
+            {
+                "$group": {
+                    "_id": "$participation",
+                    "count": {"$sum": 1},
+                }
+            }
+        ]
+    ).to_list(length=None)
+    participation_counts = {
+        str(item.get("_id") or ""): int(item.get("count") or 0)
+        for item in aggregation
+    }
+    total_count = sum(participation_counts.values())
+    return with_language(
+        request,
+        render_admin_statistics_page(
+            current_user,
+            participation_counts=participation_counts,
+            total_count=total_count,
+            lang=lang,
+        ),
+    )
+
+
+@app.get("/admin/statistics/export.xlsx", include_in_schema=False)
+async def export_admin_statistics(request: Request):
+    lang = request_language(request)
+    _current_user, response = await require_admin(request, lambda user: render_forbidden(user, lang=lang))
+    if response:
+        return with_language(request, response)
+
+    records = await request.app.state.registrations_collection.find(
+        {},
+        {"publication_file.data": 0, "expert_opinion_file.data": 0, "review_file.data": 0},
+    ).sort("created_at", -1).to_list(length=None)
+    workbook = build_applications_xlsx(records, lang=lang)
+    headers = {
+        "Content-Disposition": "attachment; filename*=UTF-8''applications.xlsx",
+    }
+    return Response(
+        content=workbook,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers=headers,
     )
 
 

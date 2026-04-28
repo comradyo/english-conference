@@ -205,6 +205,7 @@ def nav_html(current_user: dict[str, Any] | None, *, lang: str = DEFAULT_LANGUAG
         links.append(f'<a href="/my-registrations">{escape(text(lang, "nav_my_records"))}</a>')
         if current_user.get("is_admin"):
             links.append(f'<a href="/all_applications">{escape(text(lang, "nav_all_records"))}</a>')
+            links.append(f'<a href="/admin/statistics">{escape(text(lang, "nav_statistics"))}</a>')
         links.append(f'<a href="/logout">{escape(text(lang, "nav_logout"))}</a>')
     else:
         links.append(f'<a href="/">{escape(text(lang, "nav_auth"))}</a>')
@@ -1328,6 +1329,80 @@ def render_records_page(
                 lang=lang,
             )
     return layout(title, body, current_user=current_user, success=success, lang=lang)
+
+
+def render_admin_statistics_page(
+    current_user: dict[str, Any],
+    *,
+    participation_counts: dict[str, int],
+    total_count: int,
+    lang: str = DEFAULT_LANGUAGE,
+) -> HTMLResponse:
+    ordered_participations = list(PARTICIPATION_OPTIONS)
+    ordered_participations.extend(sorted(key for key in participation_counts if key not in PARTICIPATION_OPTIONS))
+    rows_html = []
+    for participation in ordered_participations:
+        count = participation_counts.get(participation, 0)
+        if not participation and count == 0:
+            continue
+        label = (
+            text(lang, "admin_statistics_empty_format")
+            if not participation
+            else participation_label(lang, participation)
+        )
+        rows_html.append(
+            f"<tr><td>{escape(label)}</td><td>{escape(str(count))}</td></tr>"
+        )
+
+    if not rows_html:
+        rows_html.append(
+            f"<tr><td>{escape(text(lang, 'admin_statistics_empty_format'))}</td><td>0</td></tr>"
+        )
+
+    body = f"""
+    <style>
+    .statistics-actions {{ display:flex; gap:12px; align-items:center; flex-wrap:wrap; }}
+    .statistics-actions .action-link {{ width:auto; }}
+    .statistics-table {{ width:100%; border-collapse:collapse; }}
+    .statistics-table th, .statistics-table td {{ padding:12px 10px; border-top:1px solid var(--line); text-align:left; vertical-align:top; }}
+    .statistics-table th {{ color:var(--muted); font-size:.9rem; font-weight:700; }}
+    .statistics-total {{ font-size:1.5rem; color:var(--accent); }}
+    </style>
+    <section class="cards">
+      <section class="panel">
+        <div class="card-title">
+          <div>
+            <h2>{escape(text(lang, "admin_statistics_heading"))}</h2>
+            <div class="meta">
+              {meta_row(text(lang, "admin_statistics_total_label"), str(total_count))}
+            </div>
+          </div>
+          <div class="statistics-actions">
+            <a class="action-link" href="/admin/statistics/export.xlsx">{escape(text(lang, "admin_statistics_export_button"))}</a>
+          </div>
+        </div>
+      </section>
+      <section class="panel">
+        <table class="statistics-table">
+          <thead>
+            <tr>
+              <th>{escape(text(lang, "admin_statistics_table_format"))}</th>
+              <th>{escape(text(lang, "admin_statistics_table_count"))}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {''.join(rows_html)}
+          </tbody>
+        </table>
+      </section>
+    </section>
+    """
+    return layout(
+        text(lang, "admin_statistics_title"),
+        body,
+        current_user=current_user,
+        lang=lang,
+    )
 
 
 def render_admin_maintenance_page(

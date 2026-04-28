@@ -33,6 +33,7 @@ TEXTS: dict[str, dict[str, str]] = {
     "nav_register": {"ru": "Создание заявки", "en": "Creating an application"},
     "nav_my_records": {"ru": "Мои заявки", "en": "My applications"},
     "nav_all_records": {"ru": "Все заявки", "en": "All applications"},
+    "nav_statistics": {"ru": "Статистика", "en": "Statistics"},
     "nav_logout": {"ru": "Выйти", "en": "Log out"},
     "notice_login_required": {"ru": "Сначала войдите в личный кабинет.", "en": "Please sign in first."},
     "notice_logged_out": {"ru": "Сеанс завершён.", "en": "You have been signed out."},
@@ -220,6 +221,19 @@ TEXTS: dict[str, dict[str, str]] = {
     "owner_account_email": {"ru": "Владелец аккаунта", "en": "Account owner"},
     "records_my_title": {"ru": "Мои заявки", "en": "My applications"},
     "records_admin_title": {"ru": "Все заявки пользователей", "en": "All user applications"},
+    "admin_statistics_title": {"ru": "Статистика", "en": "Statistics"},
+    "admin_statistics_heading": {
+        "ru": "Заявки по формату участия",
+        "en": "Applications by participation format",
+    },
+    "admin_statistics_total_label": {"ru": "Всего заявок", "en": "Total applications"},
+    "admin_statistics_export_button": {
+        "ru": "Выгрузить все заявки в Excel",
+        "en": "Export all applications to Excel",
+    },
+    "admin_statistics_table_format": {"ru": "Формат участия", "en": "Participation format"},
+    "admin_statistics_table_count": {"ru": "Количество заявок", "en": "Application count"},
+    "admin_statistics_empty_format": {"ru": "Формат не указан", "en": "No participation format"},
     "admin_publication_recheck_title": {
         "ru": "Перепроверка файлов публикаций",
         "en": "Publication file revalidation",
@@ -506,6 +520,7 @@ FIELD_LABELS: dict[str, dict[str, str]] = {
     "admin_comment": {"ru": "Комментарий к заявке", "en": "Application comment"},
     "comments": {"ru": "Комментарии к заявке", "en": "Application comments"},
     "created_at": {"ru": "Создано", "en": "Created"},
+    "updated_at": {"ru": "Обновлено", "en": "Updated"},
 }
 
 PARTICIPATION_LABELS = {
