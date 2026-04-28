@@ -180,12 +180,12 @@ TEXTS: dict[str, dict[str, str]] = {
         "en": "For students of Moscow universities only oral presentation participation is allowed.",
     },
     "hint_expert_opinion_file": {
-        "ru": "При отсутствии на момент подачи заявки необходимо впоследствии отправить на graduate.applications@yandex.ru",
-        "en": "If unavailable at the time of application should be sent subsequently to graduate.applications@yandex.ru",
+        "ru": "Формат docx/pdf, размер <10Мб. При отсутствии на момент подачи заявки необходимо впоследствии отправить на graduate.applications@yandex.ru",
+        "en": "docx/pdf, <10 MB. If unavailable at the time of application should be sent subsequently to graduate.applications@yandex.ru",
     },
     "hint_review_file": {
-        "ru": "Формат docx, размер <10Мб",
-        "en": "docx, <10 MB",
+        "ru": "Формат docx/pdf, размер <10Мб",
+        "en": "docx/pdf, <10 MB",
     },
     "current_file_name_hint": {
         "ru": "Текущий файл: {filename}. Если новый файл не выбран, останется текущий.",
@@ -426,6 +426,7 @@ TEXTS: dict[str, dict[str, str]] = {
     "registration_saved": {"ru": "Заявка сохранена.", "en": "The application has been saved."},
     "docx_file_required": {"ru": "{field}: файл обязателен.", "en": "{field}: the file is required."},
     "docx_only": {"ru": "{field}: можно загрузить только файл в формате .docx.", "en": "{field}: only .docx files are allowed."},
+    "file_type_only": {"ru": "{field}: можно загрузить только файл в формате {formats}.", "en": "{field}: only {formats} files are allowed."},
     "docx_empty": {"ru": "{field}: загруженный файл пуст.", "en": "{field}: the uploaded file is empty."},
     "docx_too_large": {
         "ru": "{field}: размер файла превышает допустимые {size} байт.",

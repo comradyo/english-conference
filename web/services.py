@@ -72,7 +72,9 @@ def validate_docx(
     required: bool = True,
     field_label: str = "File",
     lang: str = DEFAULT_LANGUAGE,
+    allowed_extensions: tuple[str, ...] = (".docx",),
 ) -> bool:
+    normalized_extensions = tuple(extension.lower() for extension in allowed_extensions)
     if upload is None:
         if required:
             raise HTTPException(status_code=400, detail=text(lang, "docx_file_required", field=field_label))
@@ -82,19 +84,31 @@ def validate_docx(
         if required:
             raise HTTPException(status_code=400, detail=text(lang, "docx_file_required", field=field_label))
         return False
-    if not filename.lower().endswith(".docx"):
-        raise HTTPException(status_code=400, detail=text(lang, "docx_only", field=field_label))
+    if not filename.lower().endswith(normalized_extensions):
+        if normalized_extensions == (".docx",):
+            message = text(lang, "docx_only", field=field_label)
+        else:
+            formats = ", ".join(normalized_extensions)
+            message = text(lang, "file_type_only", field=field_label, formats=formats)
+        raise HTTPException(status_code=400, detail=message)
     return True
 
 
-async def read_docx(
+async def read_upload_file(
     upload: UploadFile | None,
     *,
     required: bool = True,
     field_label: str = "File",
     lang: str = DEFAULT_LANGUAGE,
+    allowed_extensions: tuple[str, ...] = (".docx",),
 ) -> bytes | None:
-    if not validate_docx(upload, required=required, field_label=field_label, lang=lang):
+    if not validate_docx(
+        upload,
+        required=required,
+        field_label=field_label,
+        lang=lang,
+        allowed_extensions=allowed_extensions,
+    ):
         return None
     content = await upload.read()
     if not content:
@@ -105,6 +119,22 @@ async def read_docx(
             detail=text(lang, "docx_too_large", field=field_label, size=MAX_FILE_SIZE_BYTES),
         )
     return content
+
+
+async def read_docx(
+    upload: UploadFile | None,
+    *,
+    required: bool = True,
+    field_label: str = "File",
+    lang: str = DEFAULT_LANGUAGE,
+) -> bytes | None:
+    return await read_upload_file(
+        upload,
+        required=required,
+        field_label=field_label,
+        lang=lang,
+        allowed_extensions=(".docx",),
+    )
 
 
 def set_session_cookie(response: Response, request: Request, token: str) -> None:
