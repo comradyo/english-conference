@@ -57,7 +57,7 @@ jobs:
 
   docker-publish:
 
-    needs: test-checker
+    needs: [test-checker, test-web]
     uses: ./.github/workflows/docker-publish.yml
     secrets: inherit
 
