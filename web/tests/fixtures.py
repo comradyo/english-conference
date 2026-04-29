@@ -61,7 +61,7 @@ class FakeCollection:
 
         async def __anext__(self):
             try:
-                return next(self._iter_items)
+                return FakeCollection._apply_projection_static(next(self._iter_items), self._projection or {})
             except StopIteration as exc:
                 raise StopAsyncIteration from exc
 
@@ -198,8 +198,8 @@ class FakeCollection:
             self._apply_update(doc, update)
             return UpdateResult(matched_count=1, modified_count=1)
         if upsert:
-            new_doc = deepcopy(query)
-            self._apply_update(new_doc, update)
+            new_doc = {k: deepcopy(v) for k, v in query.items() if not isinstance(v, dict)}
+            self._apply_update(new_doc, update, is_insert=True)
             new_doc.setdefault("_id", ObjectId())
             self._docs.append(new_doc)
             return UpdateResult(matched_count=1, modified_count=1)
@@ -214,7 +214,7 @@ class FakeCollection:
             self._apply_update(doc, update)
         return UpdateResult(matched_count=matched_count, modified_count=matched_count)
 
-    def _apply_update(self, doc: dict[str, Any], update: dict[str, Any]) -> None:
+    def _apply_update(self, doc: dict[str, Any], update: dict[str, Any], is_insert: bool = False) -> None:
         for key, value in update.get("$set", {}).items():
             self._set_value(doc, key, deepcopy(value))
         for key in update.get("$unset", {}):
@@ -225,6 +225,9 @@ class FakeCollection:
                 items = []
                 self._set_value(doc, key, items)
             items.append(deepcopy(value))
+        if is_insert:
+            for key, value in update.get("$setOnInsert", {}).items():
+                self._set_value(doc, key, deepcopy(value))
 
     async def delete_one(self, query: dict[str, Any]):
         for index, doc in enumerate(self._docs):
