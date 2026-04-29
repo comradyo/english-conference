@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from fixtures import run_async
 from web.security import hash_password
+from web.tests.fixtures import run_async
 
 
 def test_register_account_success(client, state):

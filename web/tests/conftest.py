@@ -7,13 +7,16 @@ import sys
 import pytest
 from fastapi.testclient import TestClient
 
-from fixtures import DummyMongoDb, FakeCollection, make_test_settings
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+WEB_DIR = REPOSITORY_ROOT / "web"
 
-WEB_DIR = Path(__file__).resolve().parents[1]
-if str(WEB_DIR) not in sys.path:
-    sys.path.insert(0, str(WEB_DIR))
+for import_path in (REPOSITORY_ROOT, WEB_DIR):
+    import_path_value = str(import_path)
+    if import_path_value not in sys.path:
+        sys.path.insert(0, import_path_value)
 
 import web.main as main
+from web.tests.fixtures import DummyMongoDb, FakeCollection, make_test_settings
 
 
 @asynccontextmanager
@@ -21,9 +24,7 @@ async def _no_lifespan(_app):
     yield
 
 
-@pytest.fixture
-def app():
-    app = main.app
+def _configure_test_state(app):
     app.router.lifespan_context = _no_lifespan
     app.state.settings = make_test_settings()
     app.state.mongo_db = DummyMongoDb()
@@ -34,6 +35,11 @@ def app():
     app.state.password_reset_tokens_collection = FakeCollection(unique_fields={"token"})
     app.state.sessions_collection = FakeCollection(unique_fields={"token"})
     return app
+
+
+@pytest.fixture
+def app():
+    return _configure_test_state(main.app)
 
 
 @pytest.fixture
