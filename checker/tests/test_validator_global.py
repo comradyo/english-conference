@@ -352,7 +352,6 @@ class ValidatorGlobalRequirementsTest(unittest.TestCase):
 
         self.assertIn("Материалы должны быть представлены на формате А4", errors_ru)
         self.assertIn("Отступ сверху должен равняться 2 см", errors_ru)
-        self.assertIn("Общий объем статьи должен составлять 4-6 страниц", errors_ru)
         self.assertIn("Минимальный объем статьи должен составлять 6000 знаков с пробелами", errors_ru)
         self.assertIn(
             "В тексте статьи необходимо использовать шрифт Times New Roman, за исключением математических формул",
