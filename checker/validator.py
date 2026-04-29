@@ -130,6 +130,7 @@ class Validator:
         self.check_margins()
         self.check_orientation()
         self.check_volume()
+        # self.check_page_count()
         self.check_font_and_size()
         self.check_line_spacing()
         self.check_hyperlinks()
@@ -1329,18 +1330,19 @@ class Validator:
 
     # Объем статьи
     def check_volume(self):
-        pages = self.app_properties.pages
-        if pages is not None and not (self.MIN_PAGE_COUNT <= pages <= self.MAX_PAGE_COUNT):
-            self._add_error(
-                "Общий объем статьи должен составлять 4-6 страниц",
-                "The total article volume must be 4-6 pages",
-            )
-
         characters_with_spaces = self._character_count_with_spaces()
         if characters_with_spaces < self.MIN_CHARACTERS_WITH_SPACES:
             self._add_error(
                 "Минимальный объем статьи должен составлять 6000 знаков с пробелами",
                 "The article must contain at least 6000 characters including spaces",
+            )
+
+    def check_page_count(self):
+        pages = self.app_properties.pages
+        if pages is not None and not (self.MIN_PAGE_COUNT <= pages <= self.MAX_PAGE_COUNT):
+            self._add_error(
+                "Общий объем статьи должен составлять 4-6 страниц",
+                "The total article volume must be 4-6 pages",
             )
 
     # Шрифт и размер
