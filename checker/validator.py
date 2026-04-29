@@ -375,7 +375,7 @@ class Validator:
         en_title_pos = self._title_position(items, self._next_position(ru_keywords_pos), en_abstract_pos, "en")
         main_text_pos = (
             None
-            if en_keywords_pos is None
+            if en_keywords_pos is None or en_abstract_pos is None or en_abstract_pos >= en_keywords_pos
             else self._first_content_position(items, self._next_position(en_keywords_pos), sources_pos)
         )
 
@@ -750,6 +750,11 @@ class Validator:
         if not normalized or len(normalized) > 120:
             return False
         if cls.EMAIL_PATTERN.search(normalized) or re.search(r"https?://|doi\.org|www\.", normalized, re.IGNORECASE):
+            return False
+        if re.search(r"\bp\s*[<>≤≥]\s*0(?:[.,]\d+)?", normalized, re.IGNORECASE) and not re.search(
+                r"[=≈≠±∑√]",
+                normalized,
+        ):
             return False
         if not cls.PLAIN_TEXT_FORMULA_PATTERN.search(normalized):
             return False
@@ -2099,7 +2104,9 @@ class Validator:
 
     # Формулы
     def check_formulas(self):
-        for paragraph in self._iter_all_paragraphs():
+        for paragraph in self.doc.paragraphs:
+            if self._is_caption_paragraph(paragraph):
+                continue
             if self._paragraph_contains_formula(paragraph):
                 continue
             if self._looks_like_plain_text_formula(paragraph.text):

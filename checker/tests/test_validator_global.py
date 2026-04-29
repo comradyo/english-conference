@@ -510,6 +510,17 @@ class ValidatorGlobalRequirementsTest(unittest.TestCase):
         self.assertNotIn("The article text must cite the listed references", errors_en)
         self.assertNotIn("The text must cite every source from the reference list", errors_en)
 
+    def test_missing_english_abstract_does_not_make_keywords_main_text(self):
+        doc = _valid_article_document()
+        doc.paragraphs[15].clear()
+
+        validator = Validator(_docx_bytes(doc, pages=4))
+        _, errors_en = validator.validate()
+
+        self.assertIn("The English abstract was not found", errors_en)
+        self.assertIn("The main article text was not found", errors_en)
+        self.assertIsNone(validator.structure.main_text_pos)
+
     def test_article_structure_requires_main_text(self):
         doc = _valid_article_document()
         for paragraph in doc.paragraphs:
@@ -680,6 +691,23 @@ class ValidatorGlobalRequirementsTest(unittest.TestCase):
 
     def test_dimension_multiplication_text_is_not_treated_as_formula(self):
         self.assertFalse(Validator._looks_like_plain_text_formula("Input: 15 samples × 3 channels."))
+
+    def test_statistical_p_values_are_not_treated_as_formulas(self):
+        self.assertFalse(Validator._looks_like_plain_text_formula("tree depth decreases by 38.5% (p < 0.001);"))
+
+    def test_formula_check_ignores_captions_and_table_cells(self):
+        doc = _valid_article_document()
+        _add_article_paragraph(doc, "Figure 2 - RP approximation with polynomial degree L = 3")
+        _add_table_caption_and_title(doc, 1)
+        table = doc.add_table(rows=1, cols=1)
+        paragraph = table.rows[0].cells[0].paragraphs[0]
+        run = paragraph.add_run("Values > 0")
+        run.font.name = "Times New Roman"
+        run.font.size = Pt(12)
+
+        _, errors_en = Validator(_docx_bytes(doc, pages=4)).validate()
+
+        self.assertNotIn("Formulas must be created with Word Equation, Equation, or MathType", errors_en)
 
     def test_table_violations_are_reported(self):
         doc = _valid_article_document()
