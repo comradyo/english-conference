@@ -29,6 +29,7 @@ from models import (
     author_can_edit_registration,
     participation_requires_publication_file,
 )
+from zip_export import StoredZipStream
 from render import (
     layout,
     render_admin_maintenance_page,
@@ -1419,22 +1420,21 @@ async def export_admin_statistics(request: Request):
 @app.get("/admin/statistics/export.zip", include_in_schema=False)
 async def export_admin_statistics_zip(request: Request):
     """Собирает zip-архив с файлами из заявок. В корне архива — папки с ФИО, в каждой папке — файлы: публикация, экспертное заключение, рецензия (если есть)."""
-    import zipstream
-
     lang = request_language(request)
     _current_user, response = await require_admin(request, lambda user: render_forbidden(user, lang=lang))
     if response:
         return with_language(request, response)
 
     def _sanitize_part(name: str) -> str:
-        # Replace path separators and control chars
         if not name:
             return ""
-        forbidden = ['/', '\\', '\r', '\n']
-        result = name
-        for ch in forbidden:
-            result = result.replace(ch, '_')
-        return result.strip() or ""
+        forbidden = set('<>:"/\\|?*')
+        result = "".join("_" if ch in forbidden or ord(ch) < 32 else ch for ch in name)
+        result = result.strip().rstrip(". ")
+        reserved_names = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))}
+        if result.split(".", 1)[0].upper() in reserved_names:
+            result = f"_{result}"
+        return result or ""
 
     def _folder_name_for(record: dict) -> str:
         parts = [str(record.get("last_name") or "").strip(), str(record.get("first_name") or "").strip(), str(record.get("middle_name") or "").strip()]
@@ -1442,7 +1442,7 @@ async def export_admin_statistics_zip(request: Request):
         if not parts:
             return "unnamed"
         name = " ".join(parts)
-        return _sanitize_part(name)
+        return _sanitize_part(name) or "unnamed"
 
     # Use a cursor and iterate in batches to avoid loading all documents into memory at once.
     cursor = request.app.state.registrations_collection.find(
@@ -1451,9 +1451,9 @@ async def export_admin_statistics_zip(request: Request):
     ).sort("created_at", -1).batch_size(50)
 
     async def _stream_zip():
-        zs = zipstream.ZipStream(compress_type=zipstream.ZIP_DEFLATED)
         # Track names in folder to avoid overwriting
         folder_contents: dict[str, set[str]] = {}
+        zip_stream = StoredZipStream()
         async for rec in cursor:
             folder = _folder_name_for(rec)
             # if duplicate folder name among records, we accept merging into same folder; ensure unique filenames inside
@@ -1464,7 +1464,7 @@ async def export_admin_statistics_zip(request: Request):
                 filename = str(rec_field.get("filename") or "").strip()
                 if not file_data or not filename:
                     continue
-                safe_filename = _sanitize_part(filename)
+                safe_filename = _sanitize_part(filename) or f"{field_key[1]}.bin"
                 # ensure unique filename inside folder
                 arc_name = f"{folder}/{safe_filename}"
                 if arc_name in folder_contents[folder]:
@@ -1485,11 +1485,12 @@ async def export_admin_statistics_zip(request: Request):
                         i += 1
                 folder_contents[folder].add(arc_name)
                 try:
-                    zs.add(file_data, arc_name)
+                    for chunk in zip_stream.add_file(arc_name, file_data):
+                        yield chunk
                 except Exception:
                     # skip problematic file
                     continue
-        for chunk in zs:
+        for chunk in zip_stream.finalize():
             yield chunk
 
     headers = {"Content-Disposition": "attachment; filename*=UTF-8''applications.zip"}
