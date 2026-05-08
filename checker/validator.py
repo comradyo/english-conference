@@ -64,23 +64,34 @@ class Validator:
     UDK_PATTERN = re.compile(r"^\s*УДК\s+(?P<code>\S.+)$", re.IGNORECASE)
     RU_ABSTRACT_PATTERN = re.compile(r"^\s*Аннотация\s*[.:]\s*(?P<body>.+)$", re.IGNORECASE)
     EN_ABSTRACT_PATTERN = re.compile(r"^\s*Abstract\s*[.:]\s*(?P<body>.+)$", re.IGNORECASE)
+    RU_ABSTRACT_HEADING_PATTERN = re.compile(r"^\s*Аннотация\s*[.:]?\s*$", re.IGNORECASE)
+    EN_ABSTRACT_HEADING_PATTERN = re.compile(r"^\s*Abstract\s*[.:]?\s*$", re.IGNORECASE)
     RU_KEYWORDS_PATTERN = re.compile(r"^\s*Ключевые\s+слова\s*[:.]\s*(?P<keywords>.+)$", re.IGNORECASE)
     EN_KEYWORDS_PATTERN = re.compile(r"^\s*key\s*words?\s*[:.]?\s*(?P<keywords>.+)$", re.IGNORECASE)
     KEYWORDS_PATTERN = EN_KEYWORDS_PATTERN
     SOURCES_HEADING_PATTERN = re.compile(r"^\s*References\s*$")
     SPIN_PATTERN = re.compile(r"^\s*SPIN(?:-код|-code)?\s*:\s*(?P<code>\d{4}-\d{4})\s*$", re.IGNORECASE)
-    TABLE_CAPTION_PATTERN = re.compile(r"^\s*(?:Таблица|Table)\s+(?P<number>\d+)\b", re.IGNORECASE)
+    TABLE_CAPTION_PATTERN = re.compile(
+        r"^\s*(?:Таблица|Table)\s+(?P<number>\d+)(?:\s*$|[.:–—-]\s*)",
+        re.IGNORECASE,
+    )
+    AFFILIATION_LINE_PATTERN = re.compile(r"^\s*(?P<number>\d+)(?:\s+|(?=[^\s.)\]]))")
     FIGURE_CAPTION_PATTERN = re.compile(
-        r"^\s*(?:Рис\.?|Рисунок|Fig\.?|Figure)\s+(?P<number>\d+)\b",
+        r"^\s*(?:Рис\.?|Рисунок|Fig\.?|Figure)\s+(?P<number>\d+)(?:\s*$|[.:–—-]\s*)",
         re.IGNORECASE,
     )
     REFERENCE_ENTRY_PATTERN = re.compile(r"^\s*\[(?P<number>\d+)\]")
+    REFERENCE_NUMBERED_ENTRY_PATTERN = re.compile(
+        r"^\s*(?:\[(?P<bracketed_number>\d+)\]|(?P<plain_number>\d+)\.)"
+    )
     BRACKETED_REFERENCE_PATTERN = re.compile(r"\[[^\[\]]+\]")
     REFERENCE_NUMBER_TOKEN_PATTERN = re.compile(r"^\d+(?:\s*[-–]\s*\d+)?$")
     REFERENCE_PAGE_TOKEN_PATTERN = re.compile(r"^(?:с|c|p)\.?\s*\d+(?:\s*[-–]\s*\d+)?$", re.IGNORECASE)
     WORD_PATTERN = re.compile(r"[A-Za-zА-Яа-яЁё]+(?:[-'][A-Za-zА-Яа-яЁё]+)?")
     RU_NAME_WORD_PATTERN = re.compile(r"[А-ЯЁ][А-Яа-яЁё-]+")
     EN_NAME_WORD_PATTERN = re.compile(r"[A-Z][A-Za-z'-]+")
+    RU_INITIALS_NAME_PATTERN = re.compile(r"\b[А-ЯЁ][А-Яа-яЁё-]+(?:\s*[А-ЯЁ]\.){1,2}")
+    EN_INITIALS_NAME_PATTERN = re.compile(r"\b[A-Z][A-Za-z'-]+(?:\s*[A-Z]\.){1,2}")
     ABBREVIATION_PATTERN = re.compile(r"\b[A-ZА-ЯЁ]{2,}\b")
     PLAIN_TEXT_FORMULA_PATTERN = re.compile(r"[A-Za-zА-Яа-яЁё0-9)\]]\s*(?:=|≈|≠|≤|≥|<|>|±|∑|√)\s*[\w([{]")
     CAPTION_PREFIXES = ("рис.", "рисунок", "fig.", "figure", "table", "табл.")
@@ -397,9 +408,9 @@ class Validator:
         return self._find_position(
             items,
             lambda item: (
-                not self._is_udk_line(item.text)
-                and not self._is_spin_line(item.text)
-                and not self._is_affiliation_line(item.text)
+                    not self._is_udk_line(item.text)
+                    and not self._is_spin_line(item.text)
+                    and not self._is_affiliation_line(item.text)
             ),
             start,
             end,
@@ -407,13 +418,23 @@ class Validator:
 
     def _title_position(self, items: list[ParagraphItem], start: int, end: int | None, lang: str) -> int | None:
         upper_bound = len(items) if end is None else min(end, len(items))
+        if end is not None:
+            for position in reversed(range(max(start, 0), upper_bound)):
+                if (
+                        not self._is_udk_line(items[position].text)
+                        and not self._is_spin_line(items[position].text)
+                        and not self._is_affiliation_line(items[position].text)
+                        and self._is_title_candidate(items[position], lang)
+                ):
+                    return position
+
         content_positions = [
             position
             for position in range(max(start, 0), upper_bound)
             if (
-                not self._is_udk_line(items[position].text)
-                and not self._is_spin_line(items[position].text)
-                and not self._is_affiliation_line(items[position].text)
+                    not self._is_udk_line(items[position].text)
+                    and not self._is_spin_line(items[position].text)
+                    and not self._is_affiliation_line(items[position].text)
             )
         ]
         if not content_positions:
@@ -435,7 +456,7 @@ class Validator:
     @classmethod
     def _looks_like_metadata_before_title(cls, item: ParagraphItem, lang: str) -> bool:
         text = item.text
-        if cls.EMAIL_PATTERN.search(text) or cls._looks_like_affiliation_metadata(text):
+        if cls.EMAIL_PATTERN.search(text):
             return True
 
         word_count = cls._word_count(text)
@@ -447,13 +468,14 @@ class Validator:
         return False
 
     @classmethod
-    def _looks_like_affiliation_metadata(cls, text: str) -> bool:
-        normalized = cls._normalize_text(text).lower()
-        return any(hint in normalized for hint in cls.AFFILIATION_HINTS)
-
-    @classmethod
     def _is_title_candidate(cls, item: ParagraphItem, lang: str) -> bool:
         if cls._looks_like_metadata_before_title(item, lang):
+            return False
+        if item.text.count(",") >= 2 and cls._word_count(item.text) <= 12:
+            return False
+        if lang == "ru" and not cls._has_cyrillic(item.text):
+            return False
+        if lang == "en" and not cls._has_latin(item.text):
             return False
         return cls._word_count(item.text) >= 5
 
@@ -476,19 +498,47 @@ class Validator:
         if lang == "ru":
             start_pos = structure.udk_pos
             title_pos = structure.ru_title_pos
-            end_pos = structure.ru_abstract_pos
+            end_candidates = (
+                structure.ru_abstract_pos,
+                structure.ru_keywords_pos,
+                structure.en_title_pos,
+                structure.en_abstract_pos,
+                structure.en_keywords_pos,
+                structure.main_text_pos,
+                structure.sources_pos,
+            )
         else:
             start_pos = structure.ru_keywords_pos
             title_pos = structure.en_title_pos
-            end_pos = structure.en_abstract_pos
+            end_candidates = (
+                structure.en_abstract_pos,
+                structure.en_keywords_pos,
+                structure.main_text_pos,
+                structure.sources_pos,
+            )
 
-        if start_pos is None:
+        anchor_pos = title_pos if title_pos is not None else start_pos
+        if anchor_pos is None:
             return []
 
-        end = len(structure.items) if end_pos is None else end_pos
+        end_positions = [
+            position
+            for position in end_candidates
+            if position is not None and position > anchor_pos
+        ]
+        end = min(end_positions) if end_positions else min(len(structure.items), anchor_pos + self.TITLE_SCAN_LIMIT + 1)
+        abstract_heading_pattern = (
+            self.RU_ABSTRACT_HEADING_PATTERN
+            if lang == "ru"
+            else self.EN_ABSTRACT_HEADING_PATTERN
+        )
+        for position, item in enumerate(structure.items[self._next_position(anchor_pos):end], self._next_position(anchor_pos)):
+            if abstract_heading_pattern.match(item.text):
+                end = position
+                break
         return [
             item
-            for position, item in enumerate(structure.items[self._next_position(start_pos):end], self._next_position(start_pos))
+            for position, item in enumerate(structure.items[self._next_position(anchor_pos):end], self._next_position(anchor_pos))
             if position != title_pos
         ]
 
@@ -516,21 +566,46 @@ class Validator:
     def _is_spin_line(cls, text: str) -> bool:
         return text.lower().startswith(("spin-код", "spin-code", "spin:"))
 
-    @staticmethod
-    def _is_affiliation_line(text: str) -> bool:
-        return re.match(r"^\s*\d+\s+\S", text) is not None
+    @classmethod
+    def _is_affiliation_line(cls, text: str) -> bool:
+        return cls.AFFILIATION_LINE_PATTERN.match(text) is not None
+
+    @classmethod
+    def _looks_like_title_line(cls, text: str) -> bool:
+        normalized = cls._normalize_text(text)
+        if cls.EMAIL_PATTERN.search(normalized) or re.search(r"\d", normalized):
+            return False
+        words = cls.WORD_PATTERN.findall(normalized)
+        if len(words) < 5:
+            return False
+        letters = [char for char in normalized if char.isalpha()]
+        return bool(letters) and all(char.upper() == char for char in letters)
 
     @classmethod
     def _is_ru_author_line(cls, item: ParagraphItem) -> bool:
         if cls._is_spin_line(item.text) or cls._is_affiliation_line(item.text):
             return False
-        return len(cls._author_name_words(item.text, "ru")) >= 3
+        if cls._looks_like_title_line(item.text):
+            return False
+        if "," in item.text and not cls.EMAIL_PATTERN.search(item.text) and not re.search(r"\d", item.text):
+            return False
+        return cls._is_author_line(item, "ru")
 
     @classmethod
     def _is_en_author_line(cls, item: ParagraphItem) -> bool:
         if cls._is_spin_line(item.text) or cls._is_affiliation_line(item.text):
             return False
-        return len(cls._author_name_words(item.text, "en")) >= 3
+        if cls._looks_like_title_line(item.text):
+            return False
+        first_letter = next((char for char in item.text if char.isalpha()), "")
+        if first_letter and first_letter.lower() == first_letter:
+            return False
+        if "," in item.text and not cls.EMAIL_PATTERN.search(item.text) and not re.search(r"\d", item.text):
+            return False
+        has_author_marker = bool(cls.EMAIL_PATTERN.search(item.text) or re.search(r"\d", item.text))
+        if not has_author_marker and cls._word_count(item.text) > 4:
+            return False
+        return cls._is_author_line(item, "en")
 
     @classmethod
     def _author_name_part(cls, text: str) -> str:
@@ -542,35 +617,85 @@ class Validator:
     def _author_name_words(cls, text: str, lang: str) -> list[str]:
         name_part = cls._author_name_part(text)
         pattern = cls.RU_NAME_WORD_PATTERN if lang == "ru" else cls.EN_NAME_WORD_PATTERN
-        return pattern.findall(name_part)
+        return [
+            word
+            for word in pattern.findall(name_part)
+            if not (len(word) > 1 and word.upper() == word)
+        ]
+
+    @classmethod
+    def _has_initialed_name(cls, text: str, lang: str) -> bool:
+        pattern = cls.RU_INITIALS_NAME_PATTERN if lang == "ru" else cls.EN_INITIALS_NAME_PATTERN
+        return pattern.search(cls._author_name_part(text)) is not None
+
+    @classmethod
+    def _is_author_line(cls, item: ParagraphItem, lang: str) -> bool:
+        return len(cls._author_name_words(item.text, lang)) >= 3 or cls._has_initialed_name(item.text, lang)
 
     def _ru_author_items(self, structure: ArticleStructure) -> list[ParagraphItem]:
-        return [
-            item
-            for item in self._metadata_items(structure, "ru")
-            if self._is_ru_author_line(item)
-        ]
+        return self._author_items(structure, "ru")
 
     def _en_author_items(self, structure: ArticleStructure) -> list[ParagraphItem]:
-        return [
-            item
-            for item in self._metadata_items(structure, "en")
-            if self._is_en_author_line(item)
-        ]
+        return self._author_items(structure, "en")
+
+    def _author_items(self, structure: ArticleStructure, lang: str) -> list[ParagraphItem]:
+        author_predicate = self._is_ru_author_line if lang == "ru" else self._is_en_author_line
+        authors = []
+        for item in self._metadata_items(structure, lang):
+            if self._is_spin_line(item.text):
+                continue
+            if self._is_affiliation_line(item.text):
+                if authors:
+                    break
+                continue
+            if author_predicate(item):
+                authors.append(item)
+                continue
+            if authors:
+                break
+        return authors
 
     def _ru_affiliation_items(self, structure: ArticleStructure) -> list[ParagraphItem]:
-        return [
-            item
-            for item in self._metadata_items(structure, "ru")
-            if self._is_affiliation_line(item.text)
-        ]
+        return self._affiliation_items(structure, "ru")
 
     def _en_affiliation_items(self, structure: ArticleStructure) -> list[ParagraphItem]:
-        return [
-            item
-            for item in self._metadata_items(structure, "en")
-            if self._is_affiliation_line(item.text)
-        ]
+        return self._affiliation_items(structure, "en")
+
+    def _affiliation_items(self, structure: ArticleStructure, lang: str) -> list[ParagraphItem]:
+        authors = self._author_items(structure, lang)
+        if not authors:
+            return []
+
+        affiliations = []
+        after_authors = False
+        last_author_number = authors[-1].number
+        for item in self._metadata_items(structure, lang):
+            if item.number <= last_author_number:
+                continue
+            after_authors = True
+            if self._is_spin_line(item.text):
+                continue
+            if self._is_affiliation_line(item.text):
+                affiliations.append(item)
+                continue
+            if after_authors:
+                break
+        return affiliations
+
+    def _unnumbered_affiliation_items(self, structure: ArticleStructure, lang: str) -> list[ParagraphItem]:
+        authors = self._author_items(structure, lang)
+        if not authors:
+            return []
+
+        unnumbered = []
+        last_author_number = authors[-1].number
+        for item in self._metadata_items(structure, lang):
+            if item.number <= last_author_number or self._is_spin_line(item.text):
+                continue
+            if self._is_affiliation_line(item.text):
+                break
+            unnumbered.append(item)
+        return unnumbered
 
     @staticmethod
     def _has_cyrillic(text: str) -> bool:
@@ -770,13 +895,126 @@ class Validator:
         return structure.items[structure.sources_pos + 1:]
 
     @classmethod
-    def _reference_numbers(cls, structure: ArticleStructure) -> list[int]:
+    def _reference_entry_number(cls, text: str) -> int | None:
+        match = cls.REFERENCE_NUMBERED_ENTRY_PATTERN.match(text)
+        if match is None:
+            return None
+
+        number = match.group("bracketed_number") or match.group("plain_number")
+        return int(number)
+
+    def _reference_numbers(self, structure: ArticleStructure) -> list[int]:
         numbers = []
-        for item in cls._reference_items(structure):
-            match = cls.REFERENCE_ENTRY_PATTERN.match(item.text)
-            if match:
-                numbers.append(int(match.group("number")))
+        auto_number_counters = {}
+        for item in self._reference_items(structure):
+            number = self._reference_entry_number(item.text)
+            if number is not None:
+                numbers.append(number)
+                continue
+
+            numbering_key = self._paragraph_numbering_key(item.paragraph)
+            if numbering_key is None or not self._is_square_bracket_decimal_numbering(numbering_key):
+                continue
+
+            start = self._numbering_start(numbering_key)
+            auto_number_counters[numbering_key] = auto_number_counters.get(numbering_key, start - 1) + 1
+            numbers.append(auto_number_counters[numbering_key])
         return numbers
+
+    @classmethod
+    def _paragraph_numbering_key(cls, paragraph) -> tuple[str, str] | None:
+        try:
+            num_pr = paragraph._p.xpath("./*[local-name()='pPr']/*[local-name()='numPr']")
+        except Exception:
+            return None
+        if not num_pr:
+            return None
+
+        num_id = None
+        ilvl = "0"
+        for child in num_pr[0]:
+            child_name = cls._local_name(child.tag)
+            if child_name == "numId":
+                num_id = cls._element_attr_value(child, "val")
+            elif child_name == "ilvl":
+                ilvl = cls._element_attr_value(child, "val") or "0"
+        if num_id is None:
+            return None
+        return num_id, ilvl
+
+    @classmethod
+    def _element_attr_value(cls, element, attr_name: str) -> str | None:
+        for name, value in element.attrib.items():
+            if cls._local_name(name) == attr_name:
+                return value
+        return None
+
+    def _numbering_root(self):
+        if hasattr(self, "_numbering_xml_root"):
+            return self._numbering_xml_root
+        try:
+            with zipfile.ZipFile(io.BytesIO(self._docx_bytes)) as archive:
+                numbering_xml = archive.read("word/numbering.xml")
+            self._numbering_xml_root = ElementTree.fromstring(numbering_xml)
+        except (KeyError, zipfile.BadZipFile, ElementTree.ParseError):
+            self._numbering_xml_root = None
+        return self._numbering_xml_root
+
+    def _numbering_level_info(self, numbering_key: tuple[str, str]) -> dict[str, str | None]:
+        num_id, ilvl = numbering_key
+        root = self._numbering_root()
+        if root is None:
+            return {}
+
+        abstract_num_id = None
+        start_override = None
+        for num in root:
+            if self._local_name(num.tag) != "num" or self._element_attr_value(num, "numId") != num_id:
+                continue
+            for child in num:
+                child_name = self._local_name(child.tag)
+                if child_name == "abstractNumId":
+                    abstract_num_id = self._element_attr_value(child, "val")
+                elif child_name == "lvlOverride" and self._element_attr_value(child, "ilvl") == ilvl:
+                    for override_child in child:
+                        if self._local_name(override_child.tag) == "startOverride":
+                            start_override = self._element_attr_value(override_child, "val")
+            break
+
+        if abstract_num_id is None:
+            return {}
+
+        for abstract_num in root:
+            if (
+                    self._local_name(abstract_num.tag) != "abstractNum"
+                    or self._element_attr_value(abstract_num, "abstractNumId") != abstract_num_id
+            ):
+                continue
+            for level in abstract_num:
+                if self._local_name(level.tag) != "lvl" or self._element_attr_value(level, "ilvl") != ilvl:
+                    continue
+                info = {"start": start_override, "num_fmt": None, "lvl_text": None}
+                for child in level:
+                    child_name = self._local_name(child.tag)
+                    if child_name == "start" and info["start"] is None:
+                        info["start"] = self._element_attr_value(child, "val")
+                    elif child_name == "numFmt":
+                        info["num_fmt"] = self._element_attr_value(child, "val")
+                    elif child_name == "lvlText":
+                        info["lvl_text"] = self._element_attr_value(child, "val")
+                return info
+        return {}
+
+    def _is_square_bracket_decimal_numbering(self, numbering_key: tuple[str, str]) -> bool:
+        info = self._numbering_level_info(numbering_key)
+        return info.get("num_fmt") == "decimal" and info.get("lvl_text") == "[%1]"
+
+    def _numbering_start(self, numbering_key: tuple[str, str]) -> int:
+        info = self._numbering_level_info(numbering_key)
+        try:
+            return int(info.get("start") or 1)
+        except (TypeError, ValueError):
+            return 1
 
     @classmethod
     def _main_text_reference_items(cls, structure: ArticleStructure) -> list[ParagraphItem]:
@@ -855,7 +1093,11 @@ class Validator:
 
     @classmethod
     def _superscript_affiliation_numbers(cls, paragraph) -> set[str]:
-        return set(re.findall(r"\d+", cls._superscript_text(paragraph)))
+        numbers = set()
+        for run in paragraph.runs:
+            if run.font.superscript:
+                numbers.update(re.findall(r"\d+", cls._normalize_text(run.text)))
+        return numbers
 
     @classmethod
     def _has_corresponding_author_marker(cls, paragraph) -> bool:
@@ -872,14 +1114,14 @@ class Validator:
     def _paragraph_has_email(self, paragraph) -> bool:
         return bool(self.EMAIL_PATTERN.search(paragraph.text) or self._paragraph_mailto_targets(paragraph))
 
-    @staticmethod
-    def _affiliation_number(item: ParagraphItem) -> str | None:
-        match = re.match(r"^\s*(\d+)\s+", item.text)
-        return match.group(1) if match else None
+    @classmethod
+    def _affiliation_number(cls, item: ParagraphItem) -> str | None:
+        match = cls.AFFILIATION_LINE_PATTERN.match(item.text)
+        return match.group("number") if match else None
 
-    @staticmethod
-    def _has_organization_city_country(item: ParagraphItem) -> bool:
-        rest = re.sub(r"^\s*\d+\s+", "", item.text).strip()
+    @classmethod
+    def _has_organization_city_country(cls, item: ParagraphItem) -> bool:
+        rest = cls.AFFILIATION_LINE_PATTERN.sub("", item.text, count=1).strip()
         parts = [part.strip() for part in rest.split(",") if part.strip()]
         return len(parts) >= 3
 
@@ -1647,7 +1889,15 @@ class Validator:
             return
 
         body_start = match.start(body_group)
-        if not self._paragraph_runs_have_style(item.paragraph, bold=True, italic=False, start=0, end=body_start):
+        label_style_end = body_start
+        while label_style_end > 0 and item.text[label_style_end - 1].isspace():
+            label_style_end -= 1
+        if label_style_end > 0 and item.text[label_style_end - 1] in ".:":
+            label_style_end -= 1
+        while label_style_end > 0 and item.text[label_style_end - 1].isspace():
+            label_style_end -= 1
+
+        if not self._paragraph_runs_have_style(item.paragraph, bold=True, italic=False, start=0, end=label_style_end):
             self._add_error(label_message_ru, label_message_en)
         if not self._paragraph_runs_have_style(
                 item.paragraph,
@@ -1775,6 +2025,8 @@ class Validator:
         en_authors = self._en_author_items(self.structure)
         ru_affiliations = self._ru_affiliation_items(self.structure)
         en_affiliations = self._en_affiliation_items(self.structure)
+        ru_unnumbered_affiliations = self._unnumbered_affiliation_items(self.structure, "ru")
+        en_unnumbered_affiliations = self._unnumbered_affiliation_items(self.structure, "en")
 
         if len(ru_authors) > 6:
             self._add_error(
@@ -1785,6 +2037,16 @@ class Validator:
             self._add_error(
                 "Количество авторов в русском и английском блоках должно совпадать",
                 "The number of authors in Russian and English blocks must match",
+            )
+        if ru_unnumbered_affiliations:
+            self._add_error(
+                "Аффилиации должны начинаться с номера аффилиации",
+                "Affiliations must start with an affiliation number",
+            )
+        if en_unnumbered_affiliations:
+            self._add_error(
+                "Аффилиации на английском языке должны начинаться с номера аффилиации",
+                "English affiliations must start with an affiliation number",
             )
 
         self._check_author_block(
@@ -2191,16 +2453,24 @@ class Validator:
 
         bad_alignment = False
         bad_bold = False
+        bad_number_format = False
 
         for item in self._reference_items(self.structure):
-            if self.REFERENCE_ENTRY_PATTERN.match(item.text) is None:
+            if self.REFERENCE_NUMBERED_ENTRY_PATTERN.match(item.text) is None:
                 continue
 
+            if self.REFERENCE_ENTRY_PATTERN.match(item.text) is None:
+                bad_number_format = True
             if not self._is_left_or_justified(item.paragraph):
                 bad_alignment = True
             if self._paragraph_has_bold_run(item.paragraph):
                 bad_bold = True
 
+        if bad_number_format:
+            self._add_error(
+                "Элементы списка источников должны начинаться с номера источника в квадратных скобках",
+                "Reference entries must start with a source number in square brackets",
+            )
         if bad_alignment:
             self._add_error(
                 "Элементы списка источников должны быть выровнены по левому краю или по ширине",
