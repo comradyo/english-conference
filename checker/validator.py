@@ -1117,7 +1117,7 @@ class Validator:
     @classmethod
     def _affiliation_number(cls, item: ParagraphItem) -> str | None:
         match = cls.AFFILIATION_LINE_PATTERN.match(item.text)
-        return match.group(1) if match else None
+        return match.group("number") if match else None
 
     @classmethod
     def _has_organization_city_country(cls, item: ParagraphItem) -> bool:
