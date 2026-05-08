@@ -503,6 +503,45 @@ class ValidatorGlobalRequirementsTest(unittest.TestCase):
 
         self.assertFalse(Validator._is_en_author_line(item))
 
+    def test_author_detection_ignores_affiliation_with_email_and_placeholder_title(self):
+        affiliation_item = ParagraphItem(
+            number=0,
+            paragraph=None,
+            text="graduate student, E.V. Ezhikova, Prokhorov General Physics Institute RAS, Moscow, Russia, e-mail: yuzhik@list.ru",
+        )
+        title_item = ParagraphItem(number=1, paragraph=None, text="THE TITLE OF THE ARTICLE")
+
+        self.assertFalse(Validator._is_en_author_line(affiliation_item))
+        self.assertFalse(Validator._is_en_author_line(title_item))
+
+    def test_author_detection_accepts_initialed_author_lines(self):
+        ru_item = ParagraphItem(number=0, paragraph=None, text="Еременко А.А.1, Азаров А.В.1")
+        en_item = ParagraphItem(number=1, paragraph=None, text="Eremenko A.A.1, Azarov A.V.1")
+
+        self.assertTrue(Validator._is_ru_author_line(ru_item))
+        self.assertTrue(Validator._is_en_author_line(en_item))
+
+    def test_author_email_domain_does_not_make_line_an_affiliation(self):
+        doc = _valid_article_document()
+        doc.paragraphs[2].runs[-1].text = " zhnv19u774@student.bmstu.ru"
+        doc.paragraphs[10].runs[-1].text = " zhnv19u774@student.bmstu.ru"
+
+        errors_ru, errors_en = Validator(_docx_bytes(doc, pages=4)).validate()
+
+        self.assertNotIn("Сведения об авторах не найдены", errors_ru)
+        self.assertNotIn("Сведения об авторах на английском языке не найдены", errors_ru)
+        self.assertNotIn("Аффилиации должны начинаться с номера аффилиации", errors_ru)
+        self.assertNotIn("Affiliations must start with an affiliation number", errors_en)
+
+    def test_repeated_superscript_affiliation_numbers_are_not_concatenated(self):
+        doc = Document()
+        paragraph = doc.add_paragraph()
+        _add_superscript_run(paragraph, "1")
+        paragraph.add_run(", ")
+        _add_superscript_run(paragraph, "1")
+
+        self.assertEqual({"1"}, Validator._superscript_affiliation_numbers(paragraph))
+
     def test_unnumbered_affiliations_are_reported_as_affiliation_errors(self):
         doc = _valid_article_document()
         doc.paragraphs[5].text = "ФГБУ НПО Тайфун, Москва, Россия"
@@ -513,6 +552,48 @@ class ValidatorGlobalRequirementsTest(unittest.TestCase):
         self.assertIn("Affiliations must start with an affiliation number", errors_en)
         self.assertIn("English affiliations must start with an affiliation number", errors_en)
         self.assertNotIn("Author information was not found", errors_en)
+
+    def test_affiliations_without_space_after_number_are_treated_as_numbered(self):
+        doc = _valid_article_document()
+        doc.paragraphs[5].text = "1ФГБУ НПО Тайфун, Москва, Россия"
+        doc.paragraphs[6].text = "2МГТУ им. Н.Э. Баумана, Москва, Россия"
+        doc.paragraphs[13].text = "1FSBI NPO Typhoon, Moscow, Russia"
+        doc.paragraphs[14].text = "2BMSTU, Moscow, Russia"
+
+        errors_ru, errors_en = Validator(_docx_bytes(doc, pages=4)).validate()
+
+        self.assertNotIn("Аффилиации должны начинаться с номера аффилиации", errors_ru)
+        self.assertNotIn("Аффилиации на английском языке должны начинаться с номера аффилиации", errors_ru)
+        self.assertNotIn("Affiliations must start with an affiliation number", errors_en)
+        self.assertNotIn("English affiliations must start with an affiliation number", errors_en)
+
+    def test_affiliations_with_multiple_spaces_after_number_are_validly_numbered(self):
+        doc = _valid_article_document()
+        doc.paragraphs[5].text = "1   ФГБУ НПО Тайфун, Москва, Россия"
+        doc.paragraphs[6].text = "2   МГТУ им. Н.Э. Баумана, Москва, Россия"
+        doc.paragraphs[13].text = "1   FSBI NPO Typhoon, Moscow, Russia"
+        doc.paragraphs[14].text = "2   BMSTU, Moscow, Russia"
+
+        errors_ru, errors_en = Validator(_docx_bytes(doc, pages=4)).validate()
+
+        self.assertNotIn("Аффилиации должны начинаться с номера аффилиации", errors_ru)
+        self.assertNotIn("Аффилиации на английском языке должны начинаться с номера аффилиации", errors_ru)
+        self.assertNotIn("Affiliations must start with an affiliation number", errors_en)
+        self.assertNotIn("English affiliations must start with an affiliation number", errors_en)
+
+    def test_metadata_items_do_not_absorb_body_when_abstract_header_is_missing(self):
+        doc = _valid_article_document()
+        doc.paragraphs[7].text = "АННОТАЦИЯ"
+        _insert_main_text_paragraph_before_references(
+            doc,
+            "Bauman Moscow State Technical University, Moscow, Russia",
+        )
+        validator = Validator(_docx_bytes(doc, pages=4))
+        structure = validator._build_article_structure()
+
+        metadata_texts = [item.text for item in validator._metadata_items(structure, "ru")]
+
+        self.assertNotIn("Bauman Moscow State Technical University, Moscow, Russia", metadata_texts)
 
     def test_missing_english_keywords_do_not_trigger_reference_citation_cascade(self):
         doc = _valid_article_document()
