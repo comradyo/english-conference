@@ -69,12 +69,18 @@ class Validator:
     KEYWORDS_PATTERN = EN_KEYWORDS_PATTERN
     SOURCES_HEADING_PATTERN = re.compile(r"^\s*References\s*$")
     SPIN_PATTERN = re.compile(r"^\s*SPIN(?:-код|-code)?\s*:\s*(?P<code>\d{4}-\d{4})\s*$", re.IGNORECASE)
-    TABLE_CAPTION_PATTERN = re.compile(r"^\s*(?:Таблица|Table)\s+(?P<number>\d+)\b", re.IGNORECASE)
+    TABLE_CAPTION_PATTERN = re.compile(
+        r"^\s*(?:Таблица|Table)\s+(?P<number>\d+)(?:\s*$|[.:–—-]\s*)",
+        re.IGNORECASE,
+    )
     FIGURE_CAPTION_PATTERN = re.compile(
-        r"^\s*(?:Рис\.?|Рисунок|Fig\.?|Figure)\s+(?P<number>\d+)\b",
+        r"^\s*(?:Рис\.?|Рисунок|Fig\.?|Figure)\s+(?P<number>\d+)(?:\s*$|[.:–—-]\s*)",
         re.IGNORECASE,
     )
     REFERENCE_ENTRY_PATTERN = re.compile(r"^\s*\[(?P<number>\d+)\]")
+    REFERENCE_NUMBERED_ENTRY_PATTERN = re.compile(
+        r"^\s*(?:\[(?P<bracketed_number>\d+)\]|(?P<plain_number>\d+)\.)"
+    )
     BRACKETED_REFERENCE_PATTERN = re.compile(r"\[[^\[\]]+\]")
     REFERENCE_NUMBER_TOKEN_PATTERN = re.compile(r"^\d+(?:\s*[-–]\s*\d+)?$")
     REFERENCE_PAGE_TOKEN_PATTERN = re.compile(r"^(?:с|c|p)\.?\s*\d+(?:\s*[-–]\s*\d+)?$", re.IGNORECASE)
@@ -397,9 +403,9 @@ class Validator:
         return self._find_position(
             items,
             lambda item: (
-                not self._is_udk_line(item.text)
-                and not self._is_spin_line(item.text)
-                and not self._is_affiliation_line(item.text)
+                    not self._is_udk_line(item.text)
+                    and not self._is_spin_line(item.text)
+                    and not self._is_affiliation_line(item.text)
             ),
             start,
             end,
@@ -411,9 +417,9 @@ class Validator:
             position
             for position in range(max(start, 0), upper_bound)
             if (
-                not self._is_udk_line(items[position].text)
-                and not self._is_spin_line(items[position].text)
-                and not self._is_affiliation_line(items[position].text)
+                    not self._is_udk_line(items[position].text)
+                    and not self._is_spin_line(items[position].text)
+                    and not self._is_affiliation_line(items[position].text)
             )
         ]
         if not content_positions:
@@ -524,11 +530,15 @@ class Validator:
     def _is_ru_author_line(cls, item: ParagraphItem) -> bool:
         if cls._is_spin_line(item.text) or cls._is_affiliation_line(item.text):
             return False
+        if cls._looks_like_affiliation_metadata(item.text) and not cls.EMAIL_PATTERN.search(item.text):
+            return False
         return len(cls._author_name_words(item.text, "ru")) >= 3
 
     @classmethod
     def _is_en_author_line(cls, item: ParagraphItem) -> bool:
         if cls._is_spin_line(item.text) or cls._is_affiliation_line(item.text):
+            return False
+        if cls._looks_like_affiliation_metadata(item.text) and not cls.EMAIL_PATTERN.search(item.text):
             return False
         return len(cls._author_name_words(item.text, "en")) >= 3
 
@@ -570,6 +580,17 @@ class Validator:
             item
             for item in self._metadata_items(structure, "en")
             if self._is_affiliation_line(item.text)
+        ]
+
+    def _unnumbered_affiliation_items(self, structure: ArticleStructure, lang: str) -> list[ParagraphItem]:
+        return [
+            item
+            for item in self._metadata_items(structure, lang)
+            if (
+                    not self._is_affiliation_line(item.text)
+                    and not self._is_spin_line(item.text)
+                    and self._looks_like_affiliation_metadata(item.text)
+            )
         ]
 
     @staticmethod
@@ -770,12 +791,21 @@ class Validator:
         return structure.items[structure.sources_pos + 1:]
 
     @classmethod
+    def _reference_entry_number(cls, text: str) -> int | None:
+        match = cls.REFERENCE_NUMBERED_ENTRY_PATTERN.match(text)
+        if match is None:
+            return None
+
+        number = match.group("bracketed_number") or match.group("plain_number")
+        return int(number)
+
+    @classmethod
     def _reference_numbers(cls, structure: ArticleStructure) -> list[int]:
         numbers = []
         for item in cls._reference_items(structure):
-            match = cls.REFERENCE_ENTRY_PATTERN.match(item.text)
-            if match:
-                numbers.append(int(match.group("number")))
+            number = cls._reference_entry_number(item.text)
+            if number is not None:
+                numbers.append(number)
         return numbers
 
     @classmethod
@@ -981,7 +1011,7 @@ class Validator:
             return True
         return normalized_text in cls.EMAIL_LINK_LABELS
 
-    # Итерируется по цепочке стилей (видимо, стили идут не массивом, а связным списком) 
+    # Итерируется по цепочке стилей (видимо, стили идут не массивом, а связным списком)
     @staticmethod
     def _iter_style_chain(style):
         seen = set()
@@ -1647,7 +1677,15 @@ class Validator:
             return
 
         body_start = match.start(body_group)
-        if not self._paragraph_runs_have_style(item.paragraph, bold=True, italic=False, start=0, end=body_start):
+        label_style_end = body_start
+        while label_style_end > 0 and item.text[label_style_end - 1].isspace():
+            label_style_end -= 1
+        if label_style_end > 0 and item.text[label_style_end - 1] in ".:":
+            label_style_end -= 1
+        while label_style_end > 0 and item.text[label_style_end - 1].isspace():
+            label_style_end -= 1
+
+        if not self._paragraph_runs_have_style(item.paragraph, bold=True, italic=False, start=0, end=label_style_end):
             self._add_error(label_message_ru, label_message_en)
         if not self._paragraph_runs_have_style(
                 item.paragraph,
@@ -1775,6 +1813,8 @@ class Validator:
         en_authors = self._en_author_items(self.structure)
         ru_affiliations = self._ru_affiliation_items(self.structure)
         en_affiliations = self._en_affiliation_items(self.structure)
+        ru_unnumbered_affiliations = self._unnumbered_affiliation_items(self.structure, "ru")
+        en_unnumbered_affiliations = self._unnumbered_affiliation_items(self.structure, "en")
 
         if len(ru_authors) > 6:
             self._add_error(
@@ -1785,6 +1825,16 @@ class Validator:
             self._add_error(
                 "Количество авторов в русском и английском блоках должно совпадать",
                 "The number of authors in Russian and English blocks must match",
+            )
+        if ru_unnumbered_affiliations:
+            self._add_error(
+                "Аффилиации должны начинаться с номера аффилиации",
+                "Affiliations must start with an affiliation number",
+            )
+        if en_unnumbered_affiliations:
+            self._add_error(
+                "Аффилиации на английском языке должны начинаться с номера аффилиации",
+                "English affiliations must start with an affiliation number",
             )
 
         self._check_author_block(
@@ -2191,16 +2241,24 @@ class Validator:
 
         bad_alignment = False
         bad_bold = False
+        bad_number_format = False
 
         for item in self._reference_items(self.structure):
-            if self.REFERENCE_ENTRY_PATTERN.match(item.text) is None:
+            if self.REFERENCE_NUMBERED_ENTRY_PATTERN.match(item.text) is None:
                 continue
 
+            if self.REFERENCE_ENTRY_PATTERN.match(item.text) is None:
+                bad_number_format = True
             if not self._is_left_or_justified(item.paragraph):
                 bad_alignment = True
             if self._paragraph_has_bold_run(item.paragraph):
                 bad_bold = True
 
+        if bad_number_format:
+            self._add_error(
+                "Элементы списка источников должны начинаться с номера источника в квадратных скобках",
+                "Reference entries must start with a source number in square brackets",
+            )
         if bad_alignment:
             self._add_error(
                 "Элементы списка источников должны быть выровнены по левому краю или по ширине",

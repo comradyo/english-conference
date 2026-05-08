@@ -14,7 +14,7 @@ from docx.oxml import OxmlElement, parse_xml
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt
 
-from checker.validator import Validator
+from checker.validator import ParagraphItem, Validator
 
 
 PNG_1X1 = base64.b64decode(
@@ -277,7 +277,7 @@ def _valid_article_document() -> Document:
         + ("This main article text is intentionally written in English. " * 80)
         + "The first source is cited with a page number [1, p. 17]. "
         + "The remaining sources are cited as a range [2-5].",
-    )
+        )
     _add_article_paragraph(doc, "References", bold=True)
     for number in range(1, 6):
         _add_reference_paragraph(doc, number)
@@ -498,6 +498,22 @@ class ValidatorGlobalRequirementsTest(unittest.TestCase):
         self.assertIn("Author information must be placed after the article title", errors_en)
         self.assertNotIn("Author information was not found", errors_en)
 
+    def test_author_detection_ignores_organization_city_country_lines(self):
+        item = ParagraphItem(number=0, paragraph=None, text="BMSTU, Moscow, Russia")
+
+        self.assertFalse(Validator._is_en_author_line(item))
+
+    def test_unnumbered_affiliations_are_reported_as_affiliation_errors(self):
+        doc = _valid_article_document()
+        doc.paragraphs[5].text = "ФГБУ НПО Тайфун, Москва, Россия"
+        doc.paragraphs[13].text = "FSBI NPO Typhoon, Moscow, Russia"
+
+        _, errors_en = Validator(_docx_bytes(doc, pages=4)).validate()
+
+        self.assertIn("Affiliations must start with an affiliation number", errors_en)
+        self.assertIn("English affiliations must start with an affiliation number", errors_en)
+        self.assertNotIn("Author information was not found", errors_en)
+
     def test_missing_english_keywords_do_not_trigger_reference_citation_cascade(self):
         doc = _valid_article_document()
         doc.paragraphs[16].clear()
@@ -620,6 +636,26 @@ class ValidatorGlobalRequirementsTest(unittest.TestCase):
         self.assertIn("Абзацный отступ основного текста должен быть 0, 1 см или 1.25 см", errors_ru)
         self.assertIn("Заголовок References должен быть выровнен по левому краю или по ширине", errors_ru)
 
+    def test_labeled_paragraph_allows_separator_in_plain_run(self):
+        doc = _valid_article_document()
+        paragraph = doc.paragraphs[15]
+        body = paragraph.runs[1].text
+        paragraph.clear()
+        label_run = paragraph.add_run("Abstract")
+        label_run.font.name = "Times New Roman"
+        label_run.font.size = Pt(12)
+        label_run.bold = True
+        separator_run = paragraph.add_run(".")
+        separator_run.font.name = "Times New Roman"
+        separator_run.font.size = Pt(12)
+        body_run = paragraph.add_run(body)
+        body_run.font.name = "Times New Roman"
+        body_run.font.size = Pt(12)
+
+        _, errors_en = Validator(_docx_bytes(doc, pages=4)).validate()
+
+        self.assertNotIn("The 'Abstract' label must be bold and must not be italic", errors_en)
+
     def test_main_text_must_not_mix_one_and_one_twenty_five_cm_indents(self):
         doc = _valid_article_document()
         _main_text_paragraph(doc).paragraph_format.first_line_indent = Cm(1)
@@ -641,7 +677,7 @@ class ValidatorGlobalRequirementsTest(unittest.TestCase):
         _add_table_caption_and_title(doc, 1)
         _add_table(doc)
         _add_small_picture(doc)
-        _add_article_paragraph(doc, "Рисунок 1 Example figure")
+        _add_article_paragraph(doc, "Рисунок 1. Example figure")
 
         paragraph = _add_article_paragraph(doc, "Formula: ")
         formula_run = paragraph.add_run("x")
@@ -754,6 +790,11 @@ class ValidatorGlobalRequirementsTest(unittest.TestCase):
         self.assertIn("Таблицы должны нумероваться последовательно в порядке упоминания", errors_ru)
         self.assertIn("Формулы должны быть набраны в редакторе формул Word, Equation или MathType", errors_ru)
 
+    def test_table_mentions_are_not_counted_as_captions(self):
+        self.assertIsNone(Validator.TABLE_CAPTION_PATTERN.match("Table 1 matters not only as a baseline."))
+        self.assertIsNotNone(Validator.TABLE_CAPTION_PATTERN.match("Table 1"))
+        self.assertIsNotNone(Validator.TABLE_CAPTION_PATTERN.match("Table 1. Caption"))
+
     def test_reference_format_order_and_missing_sources_are_reported(self):
         doc = _valid_article_document()
         _main_text_paragraph(doc).text = (
@@ -789,6 +830,17 @@ class ValidatorGlobalRequirementsTest(unittest.TestCase):
             errors_ru,
         )
         self.assertNotIn("Элементы списка источников должны иметь висячий отступ, равный левому отступу", errors_ru)
+
+    def test_plain_numbered_references_do_not_cascade_to_count_or_missing_source_errors(self):
+        doc = _valid_article_document()
+        for index, paragraph in enumerate(_reference_paragraphs(doc), 1):
+            paragraph.text = f"{index}. Source title {index}. Moscow, Publisher, 2024, 10 p."
+
+        _, errors_en = Validator(_docx_bytes(doc, pages=4)).validate()
+
+        self.assertIn("Reference entries must start with a source number in square brackets", errors_en)
+        self.assertNotIn("The list of references must contain at least 5 sources", errors_en)
+        self.assertNotIn("The text cites references that are missing from the reference list", errors_en)
 
     def test_reference_count_and_numbering_violations_are_reported(self):
         doc = _valid_article_document()
