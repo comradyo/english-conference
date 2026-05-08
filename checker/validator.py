@@ -2061,8 +2061,6 @@ class Validator:
             superscript_message_en="Each author must have a superscript affiliation marker",
             affiliation_message_ru="Для каждой аффилиации нужно указать организацию, город и страну",
             affiliation_message_en="Each affiliation must include organization, city, and country",
-            affiliation_count_message_ru="Количество аффилиаций должно совпадать с количеством авторов",
-            affiliation_count_message_en="The number of affiliations must match the number of authors",
         )
         self._check_author_block(
             author_items=en_authors,
@@ -2076,8 +2074,6 @@ class Validator:
             superscript_message_en="Each English author must have a superscript affiliation marker",
             affiliation_message_ru="В английском блоке для каждой аффилиации нужно указать организацию, город и страну",
             affiliation_message_en="Each English affiliation must include organization, city, and country",
-            affiliation_count_message_ru="В английском блоке количество аффилиаций должно совпадать с количеством авторов",
-            affiliation_count_message_en="The number of English affiliations must match the number of English authors",
         )
 
         if ru_authors and not any(self._has_corresponding_author_marker(item.paragraph) for item in ru_authors):
@@ -2118,17 +2114,12 @@ class Validator:
             superscript_message_en: str,
             affiliation_message_ru: str,
             affiliation_message_en: str,
-            affiliation_count_message_ru: str,
-            affiliation_count_message_en: str,
     ):
         affiliation_numbers = {
             number
             for number in (self._affiliation_number(item) for item in affiliation_items)
             if number is not None
         }
-
-        if author_items and len(affiliation_items) != len(author_items):
-            self._add_error(affiliation_count_message_ru, affiliation_count_message_en)
 
         for item in author_items:
             if len(self._author_name_words(item.text, lang)) < 3:
